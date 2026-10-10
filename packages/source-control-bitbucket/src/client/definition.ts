@@ -25,6 +25,8 @@ export const definition = defineSourceControlClient({
   publicHost: "bitbucket.org",
   publishDescription: "bitbucket.org",
   publishHost: () => "bitbucket.org",
+  // An API token reports its email, which names no workspace.
+  newRepositoryOwner: (account) => (account && !account.includes("@") ? { owner: account } : null),
   defaultCloneTransport: "ssh",
   changeRequestUrl: ({ host, repository, number }) =>
     `https://${host}/${repository}/pull-requests/${number}`,
