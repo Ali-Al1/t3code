@@ -1302,7 +1302,7 @@ export type PullRequestUnavailableReason = typeof PullRequestUnavailableReason.T
  * Bitbucket they mean "no credential" and "a refused credential", not a missing tool.
  */
 const PROVIDER_REQUIREMENT: Partial<
-  Record<SourceControlProviderKind, { readonly missing: string; readonly unauthenticated: string }>
+  Record<string, { readonly missing: string; readonly unauthenticated: string }>
 > = {
   github: {
     missing:

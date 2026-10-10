@@ -3,6 +3,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   AuthOrchestrationOperateScope,
   AuthSourceControlWriteScope,
+  SourceControlProviderKind,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import {
@@ -14,7 +15,6 @@ import type {
   GitStackedAction,
   SourceControlCloneProtocol,
   SourceControlProviderDiscoveryItem,
-  SourceControlProviderKind,
   SourceControlPublishRepositoryResult,
   SourceControlRepositoryVisibility,
   VcsStatusResult,
@@ -157,10 +157,13 @@ interface PendingDefaultBranchAction {
   filePaths?: string[];
 }
 
-type PublishProviderKind = Extract<
-  SourceControlProviderKind,
-  "github" | "gitlab" | "forgejo" | "bitbucket" | "azure-devops" | "gitcafe"
->;
+type PublishProviderKind =
+  | "github"
+  | "gitlab"
+  | "forgejo"
+  | "bitbucket"
+  | "azure-devops"
+  | "gitcafe";
 
 type GitActionToastId = ReturnType<typeof toastManager.add>;
 
@@ -264,9 +267,7 @@ function publishProviderOption(provider: PublishProviderKind) {
   );
 }
 
-function isPublishProviderKind(
-  provider: SourceControlProviderKind,
-): provider is PublishProviderKind {
+function isPublishProviderKind(provider: string): provider is PublishProviderKind {
   return PUBLISH_PROVIDER_OPTIONS.some((option) => option.value === provider);
 }
 
@@ -577,8 +578,9 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
       gitcafe: null,
     };
     for (const provider of sourceControlDiscovery.data?.sourceControlProviders ?? []) {
-      if (isPublishProviderKind(provider.kind)) {
-        accounts[provider.kind] = Option.getOrNull(provider.auth.account);
+      const kind: string = provider.kind;
+      if (isPublishProviderKind(kind)) {
+        accounts[kind] = Option.getOrNull(provider.auth.account);
       }
     }
     return accounts;
@@ -665,7 +667,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
 
     void (async () => {
       const result = await publishRepositoryAction.run({
-        provider: publishProvider,
+        provider: SourceControlProviderKind.make(publishProvider),
         repository: publishRepository.trim(),
         visibility: publishVisibility,
         remoteName: publishRemoteName.trim() || "origin",
