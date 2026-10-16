@@ -159,10 +159,13 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
         return;
       }
-      if (
-        target instanceof HTMLElement &&
-        target.closest('[contenteditable]:not([contenteditable="false"])')
-      ) {
+      const editor =
+        target instanceof HTMLElement
+          ? target.closest('[contenteditable]:not([contenteditable="false"])')
+          : null;
+      // Text typed past a question without custom answers is a separate message, so digits
+      // still pick options until that message has started.
+      if (editor && (activeQuestion.allowCustomAnswer !== false || editor.textContent !== "")) {
         return;
       }
       const digit = Number.parseInt(event.key, 10);

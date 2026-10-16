@@ -180,6 +180,7 @@ export interface InterruptThreadTurnInput extends ThreadCommandInput {
   readonly runId?: RunId;
   readonly subagentId?: NodeId;
   readonly turnId?: string;
+  readonly holdQueue?: boolean;
 }
 
 export interface RespondToThreadApprovalInput extends ThreadCommandInput {
@@ -828,7 +829,7 @@ export const interruptThreadTurn = Effect.fn("EnvironmentCommands.interruptThrea
     commandId: yield* allocateCommandId(input),
     threadId: input.threadId,
     runId,
-    holdQueue: true,
+    holdQueue: input.holdQueue ?? true,
   });
 });
 

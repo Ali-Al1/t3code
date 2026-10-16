@@ -8432,6 +8432,19 @@ export default function ChatView(props: ChatViewProps) {
       onAdvanceActivePendingUserInput();
       return;
     }
+    const skippedPendingUserInput =
+      pendingUserInputs.find(
+        (input) => input.requestId === sendCtx?.skippedPendingUserInputRequestId,
+      ) ?? null;
+    // Only a question answered by a message can be dismissed; any other question holds its run
+    // until answered, so that run is stopped and this message waits in the queue behind it.
+    const skipStopsRun =
+      skippedPendingUserInput !== null && skippedPendingUserInput.responseCapability !== "message";
+    if (skipStopsRun && skippedPendingUserInput.runId === undefined) {
+      setThreadError(activeThread.id, "Answer this question or stop the turn before sending.");
+      return;
+    }
+    const sendDispatchMode = skipStopsRun ? "queue" : dispatchMode;
     if (!sendCtx?.providerAvailable) {
       notifyDirectAnnotationAttached();
       return;
@@ -8877,11 +8890,12 @@ export default function ChatView(props: ChatViewProps) {
       resumeCompactionTokens !== null &&
       !keepFullHistory &&
       messageTextForSend.toLowerCase() !== "/compact";
-    const turnDispatchMode = compactBeforeSend || sendQueuesBehindSetup ? "queue" : dispatchMode;
+    const turnDispatchMode =
+      compactBeforeSend || sendQueuesBehindSetup ? "queue" : sendDispatchMode;
     const shouldQueueBehindActiveRun =
       compactBeforeSend ||
       sendQueuesBehindSetup ||
-      (phase === "running" && dispatchMode === "queue");
+      (phase === "running" && sendDispatchMode === "queue");
     const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,
@@ -8961,6 +8975,33 @@ export default function ChatView(props: ChatViewProps) {
       sendInFlightRef.current = false;
       setThreadError(threadIdForSend, attachmentCapabilitiesBeforeUpload.fileBlockReason);
       return;
+    }
+    if (skippedPendingUserInput) {
+      // Stopping the run cancels its question. The queue keeps going, so this message runs next
+      // instead of waiting for Resume.
+      const skipResult = skipStopsRun
+        ? await interruptThreadTurn({
+            environmentId,
+            input: {
+              threadId: threadIdForSend,
+              ...(skippedPendingUserInput.runId === undefined
+                ? {}
+                : { runId: skippedPendingUserInput.runId }),
+              holdQueue: false,
+            },
+          })
+        : await onDismissUserInput(skippedPendingUserInput.requestId);
+      if (skipResult === undefined || skipResult._tag === "Failure") {
+        sendInFlightRef.current = false;
+        if (skipResult !== undefined && skipStopsRun && !isAtomCommandInterrupted(skipResult)) {
+          const error = squashAtomCommandFailure(skipResult);
+          setThreadError(
+            threadIdForSend,
+            error instanceof Error ? error.message : "Failed to stop the turn for this message.",
+          );
+        }
+        return;
+      }
     }
     const turnUsesAttachmentUploads =
       composerFilesSnapshot.length > 0
@@ -9382,7 +9423,7 @@ export default function ChatView(props: ChatViewProps) {
         streaming: false,
         ...(shouldQueueBehindActiveRun
           ? { inputIntent: "queued_turn" as const }
-          : phase === "running" && dispatchMode === "steer"
+          : phase === "running" && sendDispatchMode === "steer"
             ? { inputIntent: "steer" as const }
             : {}),
       },
@@ -9901,6 +9942,13 @@ export default function ChatView(props: ChatViewProps) {
         },
       };
     });
+    // A question without custom answers leaves the composer showing the message draft.
+    if (
+      activePendingUserInput.questions.find((entry) => entry.id === questionId)
+        ?.allowCustomAnswer === false
+    ) {
+      return;
+    }
     promptRef.current = "";
     composerRef.current?.resetCursorState({ cursor: 0 });
   };

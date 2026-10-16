@@ -4,6 +4,7 @@ import type {
   OrchestrationV2UserInputQuestion,
   ProviderApprovalOption,
   ProviderRequestKind,
+  RunId,
   RuntimeRequestId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -32,6 +33,7 @@ export interface ThreadPendingUserInput {
   readonly responseCapability: OrchestrationV2RuntimeRequest["responseCapability"]["type"];
   readonly responseMode?: "message";
   readonly dismissible: boolean;
+  readonly runId?: RunId;
 }
 
 export interface PendingThreadRequests {
@@ -83,6 +85,7 @@ export function derivePendingThreadRequests(
         })),
         responseCapability,
         dismissible: item.responseMode === "message" || responseCapability === "message",
+        ...(item.runId === null ? {} : { runId: item.runId }),
         ...(item.responseMode === "message" || responseCapability === "message"
           ? { responseMode: "message" as const }
           : {}),

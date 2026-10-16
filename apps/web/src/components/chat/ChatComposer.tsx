@@ -1366,6 +1366,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   preserveComposerFocusOnPointerDown?: boolean;
   isEditingQueuedMessage: boolean;
   onSubmitMessage: React.MouseEventHandler<HTMLButtonElement>;
+  sendLabel: string | undefined;
   onResume: () => void;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
@@ -1417,6 +1418,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         compactBeforeSendTokens={props.compactBeforeSendTokens}
         keepFullHistory={props.keepFullHistory}
         onToggleKeepFullHistory={props.onToggleKeepFullHistory}
+        sendLabel={props.sendLabel}
       />
     </>
   );
@@ -1459,6 +1461,7 @@ export interface ChatComposerHandle {
   addTerminalContext: (selection: TerminalContextSelection) => void;
   getSendContext: () => {
     answeringPendingUserInput: boolean;
+    skippedPendingUserInputRequestId: RuntimeRequestId | null;
     prompt: string;
     images: ComposerImageAttachment[];
     files: ComposerFileAttachment[];
@@ -1769,19 +1772,32 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const holdingUserInput = incomingPendingUserInputs[0]
     ? heldRequestIds.has(incomingPendingUserInputs[0].requestId)
     : false;
+  const composerDraft = useComposerThreadDraft(composerDraftTarget);
+  // A question that only takes one of its options cannot hold typed text, so typing writes an
+  // ordinary message instead. The question stays on screen until that message is sent, which
+  // dismisses the question or stops the turn waiting on it.
+  const skippedChoiceOnlyRequestId =
+    !holdingUserInput &&
+    incomingPendingUserInputs[0] &&
+    incomingPendingProgress?.activeQuestion?.allowCustomAnswer === false &&
+    composerDraftHasUserContent(composerDraft)
+      ? incomingPendingUserInputs[0].requestId
+      : null;
   const pendingUserInputs = holdingUserInput ? [] : incomingPendingUserInputs;
-  const activePendingProgress = holdingUserInput ? null : incomingPendingProgress;
+  const activePendingProgress =
+    holdingUserInput || skippedChoiceOnlyRequestId !== null ? null : incomingPendingProgress;
   const activePendingIsResponding = !holdingUserInput && incomingPendingIsResponding;
   const isLiteralPendingAnswer = activePendingProgress?.activeQuestion?.initialAnswer !== undefined;
   const shownSyncPhase = useDelayedStatus(composerDraftTargetKey, props.threadSyncPhase);
   const activeTasksProgress = shownSyncPhase === null ? props.activeTasksProgress : null;
   const activeTaskSteps = shownSyncPhase === null ? props.activeTaskSteps : null;
   const isEditingQueuedMessage = editingQueuedAttachments !== null;
-  const composerDraft = useComposerThreadDraft(composerDraftTarget);
   const composerDraftTargetKeyRef = useRef("");
   composerDraftTargetKeyRef.current = composerDraftTargetKey;
   const questionAttachmentTarget =
-    pendingUserInputs[0] && activePendingProgress?.activeQuestion
+    pendingUserInputs[0] &&
+    activePendingProgress?.activeQuestion &&
+    activePendingProgress.activeQuestion.allowCustomAnswer !== false
       ? questionAttachmentDraftId(
           environmentId,
           activeThreadId!,
@@ -2776,6 +2792,26 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion =
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
+  // Matches the server: only questions answered by a message can be dismissed.
+  const choiceOnlyQuestionIsDismissible =
+    incomingPendingUserInputs[0]?.responseCapability === "message";
+  const choiceOnlyQuestionPlaceholder = choiceOnlyQuestionIsDismissible
+    ? "Choose an option above, or type a message to send instead"
+    : "Choose an option above, or type a message to stop this turn and send it";
+  const skippedQuestionSendLabel =
+    skippedChoiceOnlyRequestId === null
+      ? undefined
+      : choiceOnlyQuestionIsDismissible
+        ? "Dismiss question and send"
+        : "Stop turn and send";
+  const mobilePendingComposerText =
+    activePendingProgress && !isChoiceOnlyPendingQuestion
+      ? activePendingProgress.customAnswer
+      : prompt.trim();
+  const mobilePendingComposerLabel =
+    activePendingProgress && !isChoiceOnlyPendingQuestion
+      ? "Write custom answer"
+      : "Type a message instead";
   const showComposerTopDrawer =
     isComposerApprovalState ||
     pendingUserInputs.length > 0 ||
@@ -2783,10 +2819,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const showCollapsedMobilePromptRow =
     isComposerCollapsedMobile && !isComposerApprovalState && pendingUserInputs.length === 0;
   const showComposerAttachAction =
-    fileStagingLimit !== null &&
-    (!activePendingProgress ||
-      (supportsQuestionAttachments &&
-        activePendingProgress.activeQuestion?.allowCustomAnswer !== false));
+    fileStagingLimit !== null && (questionAttachmentTarget === null || supportsQuestionAttachments);
   const composerFooterHasWideActions = showPlanFollowUpPrompt || activePendingProgress !== null;
   const composerFooterActionLayoutKey = useMemo(() => {
     if (activePendingProgress) {
@@ -3360,7 +3393,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   } | null>(null);
 
   useEffect(() => {
-    const nextCustomAnswer = activePendingProgress?.customAnswer;
+    const nextCustomAnswer = isChoiceOnlyPendingQuestion
+      ? undefined
+      : activePendingProgress?.customAnswer;
     if (typeof nextCustomAnswer !== "string") {
       if (lastSyncedPendingInputRef.current !== null) {
         promptRef.current = prompt;
@@ -3396,6 +3431,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [
     activePendingProgress?.customAnswer,
     activePendingProgress?.activeQuestion?.id,
+    isChoiceOnlyPendingQuestion,
     isLiteralPendingAnswer,
     activePendingUserInput?.requestId,
     prompt,
@@ -3563,8 +3599,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     contextIds: string[],
   ) => {
     expandComposerForEditorChange();
-    if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
-      if (activePendingProgress.activeQuestion.allowCustomAnswer === false) return;
+    if (
+      activePendingProgress?.activeQuestion &&
+      pendingUserInputs.length > 0 &&
+      !isChoiceOnlyPendingQuestion
+    ) {
       setComposerCursor(nextCursor);
       setComposerTrigger(
         cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor),
@@ -3688,12 +3727,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       };
     },
   ): boolean => {
-    if (
-      activePendingUserInput &&
-      activePendingProgress?.activeQuestion?.allowCustomAnswer === false
-    ) {
-      return false;
-    }
     const currentText = promptRef.current;
     const safeStart = Math.max(0, Math.min(currentText.length, rangeStart));
     const safeEnd = Math.max(safeStart, Math.min(currentText.length, rangeEnd));
@@ -3725,7 +3758,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     promptRef.current = next.text;
     const activePendingQuestion = activePendingProgress?.activeQuestion;
-    if (activePendingQuestion && activePendingUserInput) {
+    if (activePendingQuestion && activePendingUserInput && !isChoiceOnlyPendingQuestion) {
       onChangeActivePendingUserInputCustomAnswer(
         activePendingQuestion.id,
         next.text,
@@ -5362,10 +5395,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ): Promise<boolean> => {
     if (!activeThreadId || files.length === 0 || isRevertingCheckpointRef.current) return false;
     if (
-      pendingUserInputs.length > 0 &&
-      (!supportsQuestionAttachments ||
-        activePendingProgress?.activeQuestion?.allowCustomAnswer === false ||
-        activePendingIsResponding)
+      questionAttachmentTarget !== null &&
+      (!supportsQuestionAttachments || activePendingIsResponding)
     ) {
       toastManager.add({
         type: "error",
@@ -5609,10 +5640,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ): boolean => {
     if (isLiteralPendingAnswer) return false;
     const questionCanAttach =
-      pendingUserInputs.length === 0 ||
-      (supportsQuestionAttachments &&
-        activePendingProgress?.activeQuestion?.allowCustomAnswer !== false &&
-        !activePendingIsResponding);
+      questionAttachmentTarget === null ||
+      (supportsQuestionAttachments && !activePendingIsResponding);
     const hasAttachmentSlot = countReservedAttachments() < PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
     const selection = selectionOverride ?? composerEditorRef.current?.readSelectionRange();
     const wouldExceedInputLimit = wouldTextPasteExceedLimit({
@@ -6143,7 +6172,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
       },
       addTerminalContext: (selection: TerminalContextSelection) => {
-        if (!activeThread || isChoiceOnlyPendingQuestion || isLiteralPendingAnswer) return;
+        if (!activeThread || isLiteralPendingAnswer) return;
         const snapshot = readComposerSnapshotStable();
         const context = {
           id: randomUUID(),
@@ -6176,6 +6205,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       },
       getSendContext: () => ({
         answeringPendingUserInput: activePendingProgress !== null,
+        skippedPendingUserInputRequestId: skippedChoiceOnlyRequestId,
         prompt: promptRef.current,
         images: composerImagesRef.current,
         files: composerFilesRef.current,
@@ -6223,6 +6253,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerDraftTarget,
       composerCursor,
       activePendingProgress,
+      skippedChoiceOnlyRequestId,
       composerTerminalContexts,
       insertComposerDraftTerminalContext,
       insertComposerTextStable,
@@ -6448,63 +6479,56 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       onAdvance={onAdvanceActivePendingUserInput}
                       onDismiss={onDismissActivePendingUserInput}
                     />
-                    {!isChoiceOnlyPendingQuestion ||
-                    activePendingProgress?.activeQuestion?.multiSelect ? (
-                      <ComposerBanner.Body>
-                        <div
-                          data-chat-composer-mobile-pending-compact="true"
+                    <ComposerBanner.Body>
+                      <div
+                        data-chat-composer-mobile-pending-compact="true"
+                        className={cn(
+                          "flex min-w-0 items-center gap-2 rounded-lg border border-border/55 bg-background/55 p-1.5 pl-3 transition-colors hover:bg-background/80",
+                          !activePendingProgress?.activeQuestion?.multiSelect && "p-0",
+                        )}
+                      >
+                        <button
+                          type="button"
                           className={cn(
-                            "flex min-w-0 items-center gap-2 rounded-lg border border-border/55 bg-background/55 p-1.5 pl-3 transition-colors hover:bg-background/80",
-                            !activePendingProgress?.activeQuestion?.multiSelect && "p-0",
+                            "min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-sm",
+                            mobilePendingComposerText ? "text-foreground" : "text-placeholder",
+                            !activePendingProgress?.activeQuestion?.multiSelect && "px-3 py-2",
                           )}
+                          onPointerDown={(event) => event.preventDefault()}
+                          onClick={expandMobileComposerStable}
+                          aria-label={mobilePendingComposerLabel}
                         >
-                          {!isChoiceOnlyPendingQuestion ? (
-                            <button
-                              type="button"
-                              className={cn(
-                                "min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-sm",
-                                activePendingProgress?.customAnswer
-                                  ? "text-foreground"
-                                  : "text-placeholder",
-                                !activePendingProgress?.activeQuestion?.multiSelect && "px-3 py-2",
-                              )}
-                              onPointerDown={(event) => event.preventDefault()}
-                              onClick={expandMobileComposerStable}
-                              aria-label="Write custom answer"
-                            >
-                              {activePendingProgress?.customAnswer || "Write custom answer"}
-                            </button>
-                          ) : null}
-                          {activePendingProgress?.activeQuestion?.multiSelect ? (
-                            <ComposerPrimaryActions
-                              compact
-                              canOperateThread={canOperateThread}
-                              pendingAction={pendingPrimaryAction}
-                              isRunning={false}
-                              canInterrupt={false}
-                              showPlanFollowUpPrompt={false}
-                              promptHasText={false}
-                              isSendBusy={isSendBusy}
-                              sendDisabledReason={sendDisabledReason}
-                              isConnecting={isConnecting}
-                              isEnvironmentUnavailable={
-                                environmentUnavailable !== null ||
-                                noProviderAvailable ||
-                                projectSelectionRequired
-                              }
-                              isPreparingWorktree={false}
-                              hasSendableContent={false}
-                              preserveComposerFocusOnPointerDown
-                              onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
-                              onInterrupt={handleInterruptPrimaryActionStable}
-                              onImplementPlanInNewThread={
-                                handleImplementPlanInNewThreadPrimaryActionStable
-                              }
-                            />
-                          ) : null}
-                        </div>
-                      </ComposerBanner.Body>
-                    ) : null}
+                          {mobilePendingComposerText || mobilePendingComposerLabel}
+                        </button>
+                        {activePendingProgress?.activeQuestion?.multiSelect ? (
+                          <ComposerPrimaryActions
+                            compact
+                            canOperateThread={canOperateThread}
+                            pendingAction={pendingPrimaryAction}
+                            isRunning={false}
+                            canInterrupt={false}
+                            showPlanFollowUpPrompt={false}
+                            promptHasText={false}
+                            isSendBusy={isSendBusy}
+                            sendDisabledReason={sendDisabledReason}
+                            isConnecting={isConnecting}
+                            isEnvironmentUnavailable={
+                              environmentUnavailable !== null ||
+                              noProviderAvailable ||
+                              projectSelectionRequired
+                            }
+                            isPreparingWorktree={false}
+                            hasSendableContent={false}
+                            preserveComposerFocusOnPointerDown
+                            onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
+                            onInterrupt={handleInterruptPrimaryActionStable}
+                            onImplementPlanInNewThread={
+                              handleImplementPlanInNewThreadPrimaryActionStable
+                            }
+                          />
+                        ) : null}
+                      </div>
+                    </ComposerBanner.Body>
                   </div>
                 ) : null}
               </ComposerBanner.Root>
@@ -7104,7 +7128,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     value={
                       isComposerApprovalState
                         ? ""
-                        : activePendingProgress
+                        : activePendingProgress && !isChoiceOnlyPendingQuestion
                           ? activePendingProgress.customAnswer
                           : prompt
                     }
@@ -7138,7 +7162,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         ? "Resolve this approval request to continue"
                         : activePendingProgress
                           ? isChoiceOnlyPendingQuestion
-                            ? "Choose an option above"
+                            ? choiceOnlyQuestionPlaceholder
                             : "Type your own answer, or leave this blank to use the selected option"
                           : showPlanFollowUpPrompt && activeProposedPlan
                             ? "Add feedback to refine the plan, or leave this blank to implement it"
@@ -7154,7 +7178,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       isConnecting ||
                       isComposerApprovalState ||
                       projectSelectionRequired ||
-                      isChoiceOnlyPendingQuestion ||
                       activePendingIsResponding
                     }
                   />
@@ -7279,6 +7302,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     reserveContextWindowMeter={reserveContextWindowMeter}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
                     pendingAction={pendingPrimaryAction}
+                    sendLabel={skippedQuestionSendLabel}
                     isRunning={phase === "running"}
                     canInterrupt={canInterrupt}
                     followUpBehavior={settings.followUpBehavior}

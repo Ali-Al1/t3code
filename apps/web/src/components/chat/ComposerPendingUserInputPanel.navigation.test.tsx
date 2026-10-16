@@ -148,3 +148,69 @@ it("still auto-advances once after the answer draft rerenders the same question"
   await act(async () => vi.advanceTimersByTime(200));
   expect(activeIndex()).toBe("1");
 });
+
+it("picks a fixed-choice option from a digit typed into an empty composer only", async () => {
+  class FakeElement {
+    constructor(readonly textContent: string) {}
+    closest() {
+      return this;
+    }
+  }
+  vi.stubGlobal("HTMLElement", FakeElement);
+  vi.stubGlobal("HTMLInputElement", class {});
+  vi.stubGlobal("HTMLTextAreaElement", class {});
+  const onToggleOption = vi.fn();
+  await act(async () => {
+    renderer = create(
+      <ComposerPendingUserInputPanel
+        pendingUserInputs={[
+          {
+            ...prompt,
+            questions: [
+              {
+                id: "search",
+                header: "Question 1",
+                question: "Allow web search?",
+                options: [
+                  { label: "Allow", description: "Allow", value: "allow" },
+                  { label: "Disable", description: "Disable", value: "disable" },
+                ],
+                multiSelect: false,
+                allowCustomAnswer: false,
+              },
+            ],
+          },
+        ]}
+        cwd="/repo"
+        threadRef={threadRef}
+        disabled={false}
+        respondingRequestIds={[]}
+        answers={{}}
+        questionIndex={0}
+        onAdvance={() => {}}
+        onToggleOption={onToggleOption}
+        onDismiss={() => {}}
+      />,
+    );
+  });
+  const keydown = vi
+    .mocked(document.addEventListener)
+    .mock.calls.findLast(([type]) => type === "keydown")![1] as (event: KeyboardEvent) => void;
+  const press = async (composerText: string) => {
+    const event = {
+      key: "1",
+      target: new FakeElement(composerText),
+      preventDefault: vi.fn(),
+    } as unknown as KeyboardEvent;
+    await act(async () => keydown(event));
+    return event;
+  };
+
+  const typedIntoMessage = await press("Just answer, no search 1");
+  expect(typedIntoMessage.preventDefault).not.toHaveBeenCalled();
+  expect(onToggleOption).not.toHaveBeenCalled();
+
+  const pickedOption = await press("");
+  expect(pickedOption.preventDefault).toHaveBeenCalled();
+  expect(onToggleOption).toHaveBeenCalledWith("search", "allow");
+});
