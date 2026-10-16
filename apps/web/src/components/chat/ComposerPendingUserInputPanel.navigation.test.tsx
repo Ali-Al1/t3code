@@ -160,43 +160,45 @@ it("picks a fixed-choice option from a digit typed into an empty composer only",
   vi.stubGlobal("HTMLInputElement", class {});
   vi.stubGlobal("HTMLTextAreaElement", class {});
   const onToggleOption = vi.fn();
+  const panel = (composerHasContent: boolean) => (
+    <ComposerPendingUserInputPanel
+      pendingUserInputs={[
+        {
+          ...prompt,
+          questions: [
+            {
+              id: "search",
+              header: "Question 1",
+              question: "Allow web search?",
+              options: [
+                { label: "Allow", description: "Allow", value: "allow" },
+                { label: "Disable", description: "Disable", value: "disable" },
+              ],
+              multiSelect: false,
+              allowCustomAnswer: false,
+            },
+          ],
+        },
+      ]}
+      cwd="/repo"
+      threadRef={threadRef}
+      composerHasContent={composerHasContent}
+      disabled={false}
+      respondingRequestIds={[]}
+      answers={{}}
+      questionIndex={0}
+      onAdvance={() => {}}
+      onToggleOption={onToggleOption}
+      onDismiss={() => {}}
+    />
+  );
   await act(async () => {
-    renderer = create(
-      <ComposerPendingUserInputPanel
-        pendingUserInputs={[
-          {
-            ...prompt,
-            questions: [
-              {
-                id: "search",
-                header: "Question 1",
-                question: "Allow web search?",
-                options: [
-                  { label: "Allow", description: "Allow", value: "allow" },
-                  { label: "Disable", description: "Disable", value: "disable" },
-                ],
-                multiSelect: false,
-                allowCustomAnswer: false,
-              },
-            ],
-          },
-        ]}
-        cwd="/repo"
-        threadRef={threadRef}
-        disabled={false}
-        respondingRequestIds={[]}
-        answers={{}}
-        questionIndex={0}
-        onAdvance={() => {}}
-        onToggleOption={onToggleOption}
-        onDismiss={() => {}}
-      />,
-    );
+    renderer = create(panel(true));
   });
-  const keydown = vi
-    .mocked(document.addEventListener)
-    .mock.calls.findLast(([type]) => type === "keydown")![1] as (event: KeyboardEvent) => void;
   const press = async (composerText: string) => {
+    const keydown = vi
+      .mocked(document.addEventListener)
+      .mock.calls.findLast(([type]) => type === "keydown")![1] as (event: KeyboardEvent) => void;
     const event = {
       key: "1",
       target: new FakeElement(composerText),
@@ -206,6 +208,12 @@ it("picks a fixed-choice option from a digit typed into an empty composer only",
     return event;
   };
 
+  // Draft content outside the editor text, such as an attachment, also makes it a message.
+  const typedBesideAttachment = await press("");
+  expect(typedBesideAttachment.preventDefault).not.toHaveBeenCalled();
+  expect(onToggleOption).not.toHaveBeenCalled();
+
+  await act(async () => renderer!.update(panel(false)));
   const typedIntoMessage = await press("Just answer, no search 1");
   expect(typedIntoMessage.preventDefault).not.toHaveBeenCalled();
   expect(onToggleOption).not.toHaveBeenCalled();

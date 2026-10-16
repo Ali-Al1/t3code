@@ -6444,6 +6444,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     pendingUserInputs={pendingUserInputs}
                     cwd={gitCwd ?? undefined}
                     threadRef={routeThreadRef}
+                    composerHasContent={composerDraftHasUserContent(composerDraft)}
                     disabled={!canOperateThread}
                     respondingRequestIds={
                       activePendingIsResponding && activePendingUserInput
@@ -6467,6 +6468,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       pendingUserInputs={pendingUserInputs}
                       cwd={gitCwd ?? undefined}
                       threadRef={routeThreadRef}
+                      composerHasContent={composerDraftHasUserContent(composerDraft)}
                       disabled={!canOperateThread}
                       respondingRequestIds={
                         activePendingIsResponding && activePendingUserInput

@@ -8976,6 +8976,32 @@ export default function ChatView(props: ChatViewProps) {
       setThreadError(threadIdForSend, attachmentCapabilitiesBeforeUpload.fileBlockReason);
       return;
     }
+    const turnUsesAttachmentUploads =
+      composerFilesSnapshot.length > 0
+        ? attachmentCapabilitiesBeforeUpload.supportsAttachmentUploads
+        : supportsAttachmentUploads;
+    if (turnUsesAttachmentUploads && composerAttachmentsSnapshot.length > 0) {
+      for (const attachment of composerAttachmentsSnapshot) {
+        startAttachmentUpload({
+          environmentId,
+          image: attachment,
+          draftTarget: composerDraftTarget,
+        });
+      }
+      await awaitAttachmentUploads(composerAttachmentsSnapshot.map((attachment) => attachment.id));
+      const attachmentCapabilitiesAfterUpload = readLiveAttachmentCapabilities();
+      if (attachmentCapabilitiesAfterUpload.fileBlockReason !== null) {
+        sendInFlightRef.current = false;
+        setThreadError(threadIdForSend, attachmentCapabilitiesAfterUpload.fileBlockReason);
+        return;
+      }
+      if (getUploadedAttachments({ environmentId, images: composerAttachmentsSnapshot }) === null) {
+        sendInFlightRef.current = false;
+        setThreadError(threadIdForSend, "Retry or remove failed uploads before sending.");
+        return;
+      }
+    }
+    // Skip the question only once uploads succeed, so a failed upload leaves it pending.
     if (skippedPendingUserInput) {
       // Stopping the run cancels its question. The queue keeps going, so this message runs next
       // instead of waiting for Resume.
@@ -9000,31 +9026,6 @@ export default function ChatView(props: ChatViewProps) {
             error instanceof Error ? error.message : "Failed to stop the turn for this message.",
           );
         }
-        return;
-      }
-    }
-    const turnUsesAttachmentUploads =
-      composerFilesSnapshot.length > 0
-        ? attachmentCapabilitiesBeforeUpload.supportsAttachmentUploads
-        : supportsAttachmentUploads;
-    if (turnUsesAttachmentUploads && composerAttachmentsSnapshot.length > 0) {
-      for (const attachment of composerAttachmentsSnapshot) {
-        startAttachmentUpload({
-          environmentId,
-          image: attachment,
-          draftTarget: composerDraftTarget,
-        });
-      }
-      await awaitAttachmentUploads(composerAttachmentsSnapshot.map((attachment) => attachment.id));
-      const attachmentCapabilitiesAfterUpload = readLiveAttachmentCapabilities();
-      if (attachmentCapabilitiesAfterUpload.fileBlockReason !== null) {
-        sendInFlightRef.current = false;
-        setThreadError(threadIdForSend, attachmentCapabilitiesAfterUpload.fileBlockReason);
-        return;
-      }
-      if (getUploadedAttachments({ environmentId, images: composerAttachmentsSnapshot }) === null) {
-        sendInFlightRef.current = false;
-        setThreadError(threadIdForSend, "Retry or remove failed uploads before sending.");
         return;
       }
     }

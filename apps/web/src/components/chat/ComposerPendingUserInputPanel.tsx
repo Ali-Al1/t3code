@@ -15,6 +15,7 @@ interface PendingUserInputPanelProps {
   pendingUserInputs: PendingUserInput[];
   cwd: string | undefined;
   threadRef: ScopedThreadRef;
+  composerHasContent?: boolean;
   disabled?: boolean;
   respondingRequestIds: RuntimeRequestId[];
   answers: Record<string, PendingUserInputDraftAnswer>;
@@ -28,6 +29,7 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
   pendingUserInputs,
   cwd,
   threadRef,
+  composerHasContent = false,
   disabled = false,
   respondingRequestIds,
   answers,
@@ -46,6 +48,7 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
       prompt={activePrompt}
       cwd={cwd}
       threadRef={threadRef}
+      composerHasContent={composerHasContent}
       disabled={disabled}
       isResponding={respondingRequestIds.includes(activePrompt.requestId)}
       answers={answers}
@@ -61,6 +64,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   prompt,
   cwd,
   threadRef,
+  composerHasContent,
   disabled,
   isResponding,
   answers,
@@ -72,6 +76,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   prompt: PendingUserInput;
   cwd: string | undefined;
   threadRef: ScopedThreadRef;
+  composerHasContent: boolean;
   disabled: boolean;
   isResponding: boolean;
   answers: Record<string, PendingUserInputDraftAnswer>;
@@ -164,8 +169,13 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           ? target.closest('[contenteditable]:not([contenteditable="false"])')
           : null;
       // Text typed past a question without custom answers is a separate message, so digits
-      // still pick options until that message has started.
-      if (editor && (activeQuestion.allowCustomAnswer !== false || editor.textContent !== "")) {
+      // still pick options until that message has started, even with only attachments.
+      if (
+        editor &&
+        (activeQuestion.allowCustomAnswer !== false ||
+          editor.textContent !== "" ||
+          composerHasContent)
+      ) {
         return;
       }
       const digit = Number.parseInt(event.key, 10);
@@ -179,7 +189,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [activeQuestion, handleOptionSelection, isCollapsed, responseDisabled]);
+  }, [activeQuestion, composerHasContent, handleOptionSelection, isCollapsed, responseDisabled]);
 
   if (!activeQuestion) {
     return null;
