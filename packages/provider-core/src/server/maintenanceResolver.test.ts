@@ -624,7 +624,10 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
       Effect.gen(function* () {
         const { files, resolve } = windowsNpmFixture();
         const realPrefix = "C:\\node-22";
-        files.set(NodePath.win32.join(realPrefix, "package-tool.cmd"), npmShim);
+        files.set(
+          NodePath.win32.join(realPrefix, "package-tool.cmd"),
+          '@echo off\r\nset "_prog=node"\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@example\\package-tool\\bin\\package-tool.js" %*\r\n',
+        );
         // A junction must retain its visible prefix, including Unicode and root separators.
         for (const prefix of ["C:\\Users\\İbrahimİ\\npm", "C:\\", "\\\\server\\share\\"]) {
           const shim = NodePath.win32.join(prefix, "package-tool.cmd");
@@ -674,7 +677,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
       expect((yield* resolve(npmExe(project))).update).toBeNull();
       files.set(
         NodePath.win32.join(project, "package-tool.cmd"),
-        npmShim.replace("@example", "@unrelated"),
+        `@echo off\r\nrem ${npmShim.split("\r\n")[1]}\r\n${npmShim.replace("@example", "@unrelated")}`,
       );
       expect((yield* resolve(npmExe(project))).update).toBeNull();
 

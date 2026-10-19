@@ -658,8 +658,24 @@ const resolveNpmGlobalPrefix = Effect.fn("resolveNpmGlobalPrefix")(function* (
     const shim = yield* fileSystem
       .readFileString(path.join(prefix, `${command}.cmd`))
       .pipe(Effect.orElseSucceed(() => ""));
-    const shimText = shim.toLowerCase();
-    if (shimText.includes(`%dp0%${target}`) || shimText.includes(`%~dp0${target}`)) {
+    // Only npm shim invocations prove ownership; comments and assignments can mention any package.
+    const invokesPackage = shim
+      .toLowerCase()
+      .split(/\r?\n/)
+      .some((line) => {
+        const invocation = line
+          .trim()
+          .replace(/^endlocal & goto #_undefined_# 2>nul \|\| title %comspec% &\s*/, "")
+          .replace(
+            /^@?(?:"(?:%_prog%|%(?:dp0%|~dp0)\\node\.exe)"|node(?:\.exe)?)\s+(?:--[\w=-]+\s+)*/,
+            "",
+          );
+        const invokedPath = /^@?"(%(?:dp0%|~dp0)\\[^"]+)"\s+%\*$/.exec(invocation)?.[1];
+        return (
+          invokedPath?.startsWith(`%dp0%${target}`) || invokedPath?.startsWith(`%~dp0${target}`)
+        );
+      });
+    if (invokesPackage) {
       return prefix;
     }
   }
