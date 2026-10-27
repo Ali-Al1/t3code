@@ -22,9 +22,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Forks fall back to GitHub-hosted runners, which are free for public repos;
+  # only pingdotgg/t3code has the Blacksmith runners.
   fingerprint:
     name: Native fingerprint diff
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ${{ github.repository_owner == 'pingdotgg' && 'blacksmith-8vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     permissions:
       contents: read
       issues: write
