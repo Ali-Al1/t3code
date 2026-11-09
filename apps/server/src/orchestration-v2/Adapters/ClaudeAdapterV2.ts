@@ -4109,17 +4109,15 @@ function resetAtAfterSeconds(seconds: number, receivedAt: DateTime.Utc): string 
 // or, from CLIProxyAPI, as a model_cooldown body's reset_seconds.
 function gatewayCooldownResetAt(text: string, receivedAt: DateTime.Utc): string | undefined {
   const cooldown = GATEWAY_RESET_AFTER.exec(text);
-  const fromText =
-    cooldown === null
-      ? undefined
-      : resetAtAfterSeconds(
-          Number(cooldown[1] ?? 0) * 3_600 +
-            Number(cooldown[2] ?? 0) * 60 +
-            Number(cooldown[3] ?? 0),
-          receivedAt,
-        );
-  if (fromText !== undefined) return fromText;
-  const resetSeconds = GATEWAY_RESET_SECONDS.exec(text);
+  if (cooldown !== null) {
+    return resetAtAfterSeconds(
+      Number(cooldown[1] ?? 0) * 3_600 + Number(cooldown[2] ?? 0) * 60 + Number(cooldown[3] ?? 0),
+      receivedAt,
+    );
+  }
+  // A reset_seconds quoted in "(last error: …)" is one credential's, not the pool's.
+  const lastError = text.indexOf("(last error:");
+  const resetSeconds = GATEWAY_RESET_SECONDS.exec(lastError < 0 ? text : text.slice(0, lastError));
   return resetSeconds === null
     ? undefined
     : resetAtAfterSeconds(Number(resetSeconds[1]), receivedAt);
