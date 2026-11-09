@@ -9,6 +9,7 @@ import { configuredHostedAppUrl } from "../hostedPairing";
 import { announcedRun, isDetailBehindShell } from "./chat/threadActivityAnnouncement";
 import {
   deriveAvailableRevertTurnCounts,
+  deriveContinuableRunId,
   deriveThreadPendingBackgroundTasks,
   presentThreadShellFromProjection,
 } from "./ChatView.logic";
@@ -76,7 +77,6 @@ import {
   deriveProviderSubagentStatus,
   deriveProviderExtensionStatuses,
   deriveReportedModelSelection,
-  deriveResumableRunId,
   formatModelSelectionEffort,
   deriveRunlessWorkStartedAt,
   deriveThreadActivityRun,
@@ -813,7 +813,7 @@ export default function ChatView(props: ChatViewProps) {
   const resumableRunId =
     !isServerThread || serverProjection === null
       ? null
-      : deriveResumableRunId(serverProjection, serverRuntime);
+      : deriveContinuableRunId(serverProjection, serverRuntime);
   const parentSubagentThreadId =
     activeThread?.lineage.relationshipToParent === "subagent"
       ? activeThread.lineage.parentThreadId

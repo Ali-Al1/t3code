@@ -1,11 +1,15 @@
 import { type OrchestrationV2ProviderTurn, type RunAttemptId } from "@t3tools/contracts";
 import {
   deriveLatestThreadRun,
+  deriveResumableRunId,
   deriveThreadRuntime,
 } from "@t3tools/client-runtime/state/thread-execution";
 import { checkpointFileTotals } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { COMPACT_COMMAND_PATTERN } from "@t3tools/client-runtime/state/context-window";
-import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import {
+  backgroundWorkHoldsCompletion,
+  derivePendingBackgroundWork,
+} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import {
   latestUnheldRun,
   usageLimitRunPresentedAsLatest,
@@ -1446,11 +1450,30 @@ export function presentThreadShellFromProjection(
         )?.goal ?? null,
       itemCount: projection.turnItems.length,
       visibleItemCount: projection.visibleTurnItems.length,
+      // The structure carries no roster; derive it so it agrees with the runtime below.
+      pendingBackgroundTasks: deriveThreadPendingBackgroundTasks(projection),
       updatedAt,
     }),
     latestRun,
     runtime,
   };
+}
+
+/**
+ * The run Continue resumes. An interrupted run is not offered while a pull request watch or
+ * other awaited background work holds the thread: it is waiting, not stopped.
+ */
+export function deriveContinuableRunId(
+  projection: ThreadStructure,
+  runtime: Parameters<typeof deriveResumableRunId>[1],
+): RunId | null {
+  const runId = deriveResumableRunId(projection, runtime);
+  if (runId === null) return null;
+  const run = projection.runs.find((candidate) => candidate.id === runId);
+  return run?.status === "interrupted" &&
+    backgroundWorkHoldsCompletion(deriveThreadPendingBackgroundTasks(projection))
+    ? null
+    : runId;
 }
 
 /** Background work the provider still runs after the latest run ended. */

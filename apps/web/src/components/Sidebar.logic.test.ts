@@ -246,6 +246,30 @@ describe("resolveSidebarThreadStatus", () => {
     ).toBe("approval");
   });
 
+  it("keeps a completed thread Waiting, not Done, while a pull request watch holds it", () => {
+    const completed = { ...runtime, status: "completed" as const };
+    const watch = {
+      taskId: "pull-request-watch:github.com/acme/app#1",
+      description: "Watching pull request #1",
+      kind: "monitor" as const,
+      awaited: true as const,
+    };
+    expect(
+      resolveSidebarThreadStatus({ ...idle, runtime: completed, pendingBackgroundTasks: [watch] }),
+    ).toBe("waiting");
+    expect(resolveSidebarThreadStatus({ ...idle, runtime: completed })).toBe("ready");
+    // Work the agent does not wait on, such as a dev server, does not hold it.
+    expect(
+      resolveSidebarThreadStatus({
+        ...idle,
+        runtime: completed,
+        pendingBackgroundTasks: [
+          { taskId: "dev-server", description: "Dev server", kind: "command" as const },
+        ],
+      }),
+    ).toBe("ready");
+  });
+
   it("shows a waiting guest message as a Request, below the agent's own requests", () => {
     expect(resolveSidebarThreadStatus({ ...idle, pendingGuestMessageCount: 1, runtime })).toBe(
       "request",
