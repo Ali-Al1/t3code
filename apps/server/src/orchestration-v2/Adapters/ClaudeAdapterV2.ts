@@ -4091,17 +4091,38 @@ function claudeUsageLimitResetAt(resetsAt: unknown): string | null {
     : null;
 }
 
-function gatewayCooldownResetAt(
-  cooldown: RegExpExecArray | null,
-  completedAt: DateTime.Utc,
-): string | undefined {
-  if (cooldown === null) return undefined;
-  const seconds =
-    Number(cooldown[1] ?? 0) * 3_600 + Number(cooldown[2] ?? 0) * 60 + Number(cooldown[3] ?? 0);
-  const resetMs = DateTime.toEpochMillis(completedAt) + seconds * 1_000;
+const GATEWAY_WRAPPED_RATE_LIMIT =
+  /^API Error: 503 \[[^\]\r\n]+\] \[429\]: \{"type":"error","error":\{"type":"rate_limit_error",/;
+const GATEWAY_RESET_AFTER = /\(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)/;
+// CLIProxyAPI's model_cooldown body; the CLI may relay it raw or JSON-escaped.
+const GATEWAY_RESET_SECONDS = /\\?"reset_seconds\\?"\s*:\s*(\d+)/;
+const GATEWAY_MODEL_COOLDOWN = /\\?"code\\?"\s*:\s*\\?"model_cooldown\\?"/;
+
+function resetAtAfterSeconds(seconds: number, receivedAt: DateTime.Utc): string | undefined {
+  const resetMs = DateTime.toEpochMillis(receivedAt) + seconds * 1_000;
   return seconds > 0 && resetMs < 8.64e15
     ? DateTime.formatIso(DateTime.makeUnsafe(resetMs))
     : undefined;
+}
+
+// A gateway names its earliest credential reset as "(reset after 1h2m3s)" text
+// or, from CLIProxyAPI, as a model_cooldown body's reset_seconds.
+function gatewayCooldownResetAt(text: string, receivedAt: DateTime.Utc): string | undefined {
+  const cooldown = GATEWAY_RESET_AFTER.exec(text);
+  const fromText =
+    cooldown === null
+      ? undefined
+      : resetAtAfterSeconds(
+          Number(cooldown[1] ?? 0) * 3_600 +
+            Number(cooldown[2] ?? 0) * 60 +
+            Number(cooldown[3] ?? 0),
+          receivedAt,
+        );
+  if (fromText !== undefined) return fromText;
+  const resetSeconds = GATEWAY_RESET_SECONDS.exec(text);
+  return resetSeconds === null
+    ? undefined
+    : resetAtAfterSeconds(Number(resetSeconds[1]), receivedAt);
 }
 
 function providerFailureFromResult(
@@ -4115,13 +4136,9 @@ function providerFailureFromResult(
     message.subtype === "success" &&
     message.is_error &&
     message.terminal_reason === "api_error" &&
-    message.api_error_status === 503
-      ? gatewayCooldownResetAt(
-          /^API Error: 503 \[[^\]\r\n]+\] \[429\]: \{"type":"error","error":\{"type":"rate_limit_error",[^\r\n]*\} \(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)/.exec(
-            message.result,
-          ),
-          receivedAt,
-        )
+    message.api_error_status === 503 &&
+    GATEWAY_WRAPPED_RATE_LIMIT.test(message.result)
+      ? gatewayCooldownResetAt(message.result, receivedAt)
       : undefined;
   if (gatewayResetAt !== undefined) {
     return makeProviderFailure({
@@ -4132,8 +4149,16 @@ function providerFailureFromResult(
       resetAt: gatewayResetAt,
     });
   }
+  // CLIProxyAPI reports an exhausted credential pool as model_cooldown with
+  // the earliest credential's reset, whatever status carries it.
+  const poolCooldownResetAt =
+    message.subtype === "success" && message.is_error && GATEWAY_MODEL_COOLDOWN.test(message.result)
+      ? gatewayCooldownResetAt(message.result, receivedAt)
+      : undefined;
   const failureClass =
-    (message.subtype === "success" && message.api_error_status === 429) || usageLimited
+    (message.subtype === "success" && message.api_error_status === 429) ||
+    usageLimited ||
+    poolCooldownResetAt !== undefined
       ? "usage_limit"
       : "provider_error";
   const listedError = resultUserFacingError(message);
@@ -4161,12 +4186,9 @@ function providerFailureFromResult(
   const apiErrorStatus = message.api_error_status ?? null;
   // API-key sessions get no rate_limit_info, so a gateway's 429 carries its reset only as text.
   const resetAt =
-    apiErrorStatus === 429 && message.result.startsWith("API Error:")
-      ? gatewayCooldownResetAt(
-          /\(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)/.exec(message.result),
-          receivedAt,
-        )
-      : undefined;
+    apiErrorStatus === 429 && (message.is_error || message.result.startsWith("API Error:"))
+      ? gatewayCooldownResetAt(message.result, receivedAt)
+      : poolCooldownResetAt;
   return makeProviderFailure({
     message: listedError ?? structuredError ?? failureHint ?? message.result,
     code:
@@ -4174,7 +4196,10 @@ function providerFailureFromResult(
         ? (message.terminal_reason ?? "sdk_result_error")
         : `api_error_${apiErrorStatus}`,
     class: failureClass,
-    retryable: apiErrorStatus === 429 || apiErrorStatus === 529 ? true : null,
+    retryable:
+      apiErrorStatus === 429 || apiErrorStatus === 529 || poolCooldownResetAt !== undefined
+        ? true
+        : null,
     resetAt: resetAt ?? null,
   });
 }

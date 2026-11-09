@@ -7631,6 +7631,149 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  const poolModel = "mimo-v2.6-flash-all-pool";
+  const poolCooldownBody = (resetSeconds: number) =>
+    `{"error":{"code":"model_cooldown","message":"All credentials for model ${poolModel} are cooling down","model":"${poolModel}","reset_seconds":${resetSeconds},"reset_time":"1h2m3s"}}`;
+  it.effect.each([
+    {
+      name: "a 429 whose cooling-down message names the earliest reset",
+      status: 429,
+      error: "rate_limit" as const,
+      result: `API Error: Request rejected (429) · All credentials for model ${poolModel} are cooling down (reset after 2h54m21s)`,
+      seconds: 2 * 3_600 + 54 * 60 + 21,
+    },
+    {
+      name: "a 429 reset outside the API Error prefix",
+      status: 429,
+      error: "rate_limit" as const,
+      result: `Request rejected (429) · All credentials for model ${poolModel} are cooling down (reset after 4m 6s)`,
+      seconds: 246,
+    },
+    {
+      name: "a 429 model_cooldown body with reset_seconds",
+      status: 429,
+      error: "rate_limit" as const,
+      result: `API Error: 429 ${poolCooldownBody(3723)}`,
+      seconds: 3723,
+    },
+    {
+      name: "a 429 JSON-escaped model_cooldown body",
+      status: 429,
+      error: "rate_limit" as const,
+      result: `API Error: 429 ${JSON.stringify(poolCooldownBody(3723))}`,
+      seconds: 3723,
+    },
+    {
+      name: "a 429 Claude rate_limit_error body with reset_seconds",
+      status: 429,
+      error: "rate_limit" as const,
+      result: `API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"All credentials for model ${poolModel} are cooling down","reset_seconds":3723}}`,
+      seconds: 3723,
+    },
+    {
+      name: "a model_cooldown body on a non-429 status",
+      status: 500,
+      error: "server_error" as const,
+      result: `API Error: 500 ${poolCooldownBody(3723)}`,
+      seconds: 3723,
+    },
+    {
+      name: "a wrapped gateway 503 whose message names the reset",
+      status: 503,
+      error: "server_error" as const,
+      result: `API Error: 503 [cpa/${poolModel}] [429]: {"type":"error","error":{"type":"rate_limit_error","message":"All credentials for model ${poolModel} are cooling down (reset after 1h2m3s)"}}`,
+      seconds: 3723,
+    },
+    {
+      name: "a wrapped gateway 503 with reset_seconds",
+      status: 503,
+      error: "server_error" as const,
+      result: `API Error: 503 [cpa/${poolModel}] [429]: {"type":"error","error":{"type":"rate_limit_error","message":"All credentials for model ${poolModel} are cooling down","reset_seconds":246}}`,
+      seconds: 246,
+    },
+    {
+      name: "a 429 model_cooldown body with no time left",
+      status: 429,
+      error: "rate_limit" as const,
+      result: `API Error: 429 ${poolCooldownBody(0)}`,
+      seconds: 0,
+      usageLimit: true,
+    },
+    {
+      name: "a non-429 model_cooldown body with no time left",
+      status: 500,
+      error: "server_error" as const,
+      result: `API Error: 500 ${poolCooldownBody(0)}`,
+      seconds: 0,
+    },
+    {
+      name: "a pool with no auth candidates",
+      status: 503,
+      error: "server_error" as const,
+      result: `API Error: 503 auth_not_found: no auth candidates (providers=xiaomi,opencode-go, model=${poolModel})`,
+      seconds: 0,
+    },
+    {
+      name: "a JSON auth_not_found body",
+      status: 503,
+      error: "server_error" as const,
+      result: `API Error: 503 {"error":{"code":"auth_not_found","message":"no auth candidates (providers=xiaomi, model=${poolModel})"}}`,
+      seconds: 0,
+    },
+  ])("reads a credential pool's earliest reset from $name", (input) =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      const now = yield* DateTime.now;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("attempt-pool-cooldown"),
+          text: "Continue.",
+          attachments: [],
+        }),
+      );
+      yield* Queue.offerAll(harness.sdkMessages, [
+        makeAssistantErrorFrame({
+          uuid: "00000000-0000-4000-8000-000000000656",
+          error: input.error,
+          text: input.result,
+        }),
+        makeResultFrame({
+          uuid: "00000000-0000-4000-8000-000000000657",
+          result: input.result,
+          terminalReason: "api_error",
+          isError: true,
+          apiErrorStatus: input.status,
+        }),
+      ]);
+      const terminal = yield* Queue.take(harness.terminalReceipts);
+      assert.equal(terminal.status, "failed");
+      if (terminal.status !== "failed") return;
+      const usageLimit = input.seconds > 0 || input.usageLimit === true;
+      assert.equal(terminal.failure.class, usageLimit ? "usage_limit" : "provider_error");
+      assert.equal(
+        terminal.failure.resetAt ?? null,
+        input.seconds > 0
+          ? DateTime.formatIso(
+              DateTime.makeUnsafe(DateTime.toEpochMillis(now) + input.seconds * 1_000),
+            )
+          : null,
+      );
+      if (input.seconds > 0) assert.equal(terminal.failure.retryable, true);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
+  );
+
   it.effect("keeps the measured context when a usage limit ends the turn", () =>
     Effect.gen(function* () {
       const harness = yield* makeWakeHarness;
