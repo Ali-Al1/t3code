@@ -4105,19 +4105,34 @@ function resetAtAfterSeconds(seconds: number, receivedAt: DateTime.Utc): string 
     : undefined;
 }
 
+// Drops each "(last error: …)", which quotes one credential's error rather than
+// the pool's. It runs to the end of the JSON string holding it (the first quote
+// with no backslash before it), so fields after that string survive, or to the
+// end of rendered, non-JSON text.
+function withoutLastError(text: string): string {
+  let rest = text;
+  for (let start = rest.indexOf("(last error:"); start >= 0; start = rest.indexOf("(last error:")) {
+    let end = start;
+    do {
+      end = rest.indexOf('"', end + 1);
+    } while (end > 0 && rest[end - 1] === "\\");
+    rest = rest.slice(0, start) + (end < 0 ? "" : rest.slice(end));
+  }
+  return rest;
+}
+
 // A gateway names its earliest credential reset as "(reset after 1h2m3s)" text
 // or, from CLIProxyAPI, as a model_cooldown body's reset_seconds.
 function gatewayCooldownResetAt(text: string, receivedAt: DateTime.Utc): string | undefined {
-  const cooldown = GATEWAY_RESET_AFTER.exec(text);
+  const poolText = withoutLastError(text);
+  const cooldown = GATEWAY_RESET_AFTER.exec(poolText);
   if (cooldown !== null) {
     return resetAtAfterSeconds(
       Number(cooldown[1] ?? 0) * 3_600 + Number(cooldown[2] ?? 0) * 60 + Number(cooldown[3] ?? 0),
       receivedAt,
     );
   }
-  // A reset_seconds quoted in "(last error: …)" is one credential's, not the pool's.
-  const lastError = text.indexOf("(last error:");
-  const resetSeconds = GATEWAY_RESET_SECONDS.exec(lastError < 0 ? text : text.slice(0, lastError));
+  const resetSeconds = GATEWAY_RESET_SECONDS.exec(poolText);
   return resetSeconds === null
     ? undefined
     : resetAtAfterSeconds(Number(resetSeconds[1]), receivedAt);

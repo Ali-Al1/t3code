@@ -7638,6 +7638,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a 429 whose cooling-down message names the earliest reset",
       status: 429,
+      code: "api_error_429",
       error: "rate_limit" as const,
       result: `API Error: Request rejected (429) · All credentials for model ${poolModel} are cooling down (reset after 2h54m21s)`,
       seconds: 2 * 3_600 + 54 * 60 + 21,
@@ -7645,6 +7646,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a 429 reset outside the API Error prefix",
       status: 429,
+      code: "api_error_429",
       error: "rate_limit" as const,
       result: `Request rejected (429) · All credentials for model ${poolModel} are cooling down (reset after 4m 6s)`,
       seconds: 246,
@@ -7652,6 +7654,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a 429 Claude body whose last error names a later reset",
       status: 429,
+      code: "api_error_429",
       error: "rate_limit" as const,
       result: `API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"All credentials for model ${poolModel} are cooling down (reset after 2h54m21s) (last error: GoUsageLimitError (reset after 9h0m0s))"}}`,
       seconds: 2 * 3_600 + 54 * 60 + 21,
@@ -7659,6 +7662,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a rendered 429 whose last error names a later reset",
       status: 429,
+      code: "api_error_429",
       error: "rate_limit" as const,
       result: `API Error: Request rejected (429) · All credentials for model ${poolModel} are cooling down (reset after 2h54m21s) (last error: GoUsageLimitError (reset after 9h0m0s))`,
       seconds: 2 * 3_600 + 54 * 60 + 21,
@@ -7666,6 +7670,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a 429 with no time left and a reset_seconds in its last error",
       status: 429,
+      code: "api_error_429",
       error: "rate_limit" as const,
       result: `API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"All credentials for model ${poolModel} are cooling down (reset after 0s) (last error: {\\"reset_seconds\\":32400})"}}`,
       seconds: 0,
@@ -7674,13 +7679,49 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a model_cooldown whose only reset_seconds is in its last error",
       status: 500,
+      code: "api_error_500",
       error: "server_error" as const,
       result: `API Error: 500 {"error":{"code":"model_cooldown","message":"All credentials for model ${poolModel} are cooling down (last error: {\\"reset_seconds\\":32400})"}}`,
       seconds: 0,
     },
     {
+      name: "a 429 Claude body whose only reset is in its last error",
+      status: 429,
+      code: "api_error_429",
+      error: "rate_limit" as const,
+      result: `API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"All credentials for model ${poolModel} are cooling down (last error: GoUsageLimitError (reset after 9h0m0s))"}}`,
+      seconds: 0,
+      usageLimit: true,
+    },
+    {
+      name: "a rendered 429 whose only reset is in its last error",
+      status: 429,
+      code: "api_error_429",
+      error: "rate_limit" as const,
+      result: `API Error: Request rejected (429) · All credentials for model ${poolModel} are cooling down (last error: GoUsageLimitError (reset after 9h0m0s))`,
+      seconds: 0,
+      usageLimit: true,
+    },
+    {
+      name: "a model_cooldown body with no time left in its last error and reset_seconds after it",
+      status: 429,
+      code: "api_error_429",
+      error: "rate_limit" as const,
+      result: `API Error: 429 {"error":{"code":"model_cooldown","message":"All credentials for model ${poolModel} are cooling down (last error: GoUsageLimitError (reset after 0s))","model":"${poolModel}","reset_seconds":600}}`,
+      seconds: 600,
+    },
+    {
+      name: "a model_cooldown body in CLIProxyAPI's field order with a last error",
+      status: 500,
+      code: "api_error_500",
+      error: "server_error" as const,
+      result: `API Error: 500 {"error":{"code":"model_cooldown","message":"All credentials for model ${poolModel} are cooling down (last error: {\\"error\\":{\\"message\\":\\"quota exceeded\\"}})","model":"${poolModel}","reset_seconds":3723}}`,
+      seconds: 3723,
+    },
+    {
       name: "a 429 model_cooldown body with reset_seconds",
       status: 429,
+      code: "api_error_429",
       error: "rate_limit" as const,
       result: `API Error: 429 ${poolCooldownBody(3723)}`,
       seconds: 3723,
@@ -7688,6 +7729,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a 429 JSON-escaped model_cooldown body",
       status: 429,
+      code: "api_error_429",
       error: "rate_limit" as const,
       result: `API Error: 429 ${JSON.stringify(poolCooldownBody(3723))}`,
       seconds: 3723,
@@ -7695,6 +7737,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a 429 Claude rate_limit_error body with reset_seconds",
       status: 429,
+      code: "api_error_429",
       error: "rate_limit" as const,
       result: `API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"All credentials for model ${poolModel} are cooling down","reset_seconds":3723}}`,
       seconds: 3723,
@@ -7702,6 +7745,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a model_cooldown body on a non-429 status",
       status: 500,
+      code: "api_error_500",
       error: "server_error" as const,
       result: `API Error: 500 ${poolCooldownBody(3723)}`,
       seconds: 3723,
@@ -7709,6 +7753,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a wrapped gateway 503 whose message names the reset",
       status: 503,
+      code: "api_error_429",
       error: "server_error" as const,
       result: `API Error: 503 [cpa/${poolModel}] [429]: {"type":"error","error":{"type":"rate_limit_error","message":"All credentials for model ${poolModel} are cooling down (reset after 1h2m3s)"}}`,
       seconds: 3723,
@@ -7716,6 +7761,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a wrapped gateway 503 with reset_seconds",
       status: 503,
+      code: "api_error_429",
       error: "server_error" as const,
       result: `API Error: 503 [cpa/${poolModel}] [429]: {"type":"error","error":{"type":"rate_limit_error","message":"All credentials for model ${poolModel} are cooling down","reset_seconds":246}}`,
       seconds: 246,
@@ -7723,6 +7769,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a 429 model_cooldown body with no time left",
       status: 429,
+      code: "api_error_429",
       error: "rate_limit" as const,
       result: `API Error: 429 ${poolCooldownBody(0)}`,
       seconds: 0,
@@ -7731,6 +7778,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a non-429 model_cooldown body with no time left",
       status: 500,
+      code: "api_error_500",
       error: "server_error" as const,
       result: `API Error: 500 ${poolCooldownBody(0)}`,
       seconds: 0,
@@ -7738,6 +7786,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a pool with no auth candidates",
       status: 503,
+      code: "api_error_503",
       error: "server_error" as const,
       result: `API Error: 503 auth_not_found: no auth candidates (providers=xiaomi,opencode-go, model=${poolModel})`,
       seconds: 0,
@@ -7745,6 +7794,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     {
       name: "a JSON auth_not_found body",
       status: 503,
+      code: "api_error_503",
       error: "server_error" as const,
       result: `API Error: 503 {"error":{"code":"auth_not_found","message":"no auth candidates (providers=xiaomi, model=${poolModel})"}}`,
       seconds: 0,
@@ -7782,6 +7832,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       if (terminal.status !== "failed") return;
       const usageLimit = input.seconds > 0 || input.usageLimit === true;
       assert.equal(terminal.failure.class, usageLimit ? "usage_limit" : "provider_error");
+      assert.equal(terminal.failure.code, input.code);
       assert.equal(
         terminal.failure.resetAt ?? null,
         input.seconds > 0
