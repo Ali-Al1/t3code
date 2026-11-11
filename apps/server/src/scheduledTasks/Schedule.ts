@@ -1,4 +1,8 @@
-import { MIN_SCHEDULED_TASK_INTERVAL_MS, type ScheduledTaskSchedule } from "@t3tools/contracts";
+import {
+  MIN_SCHEDULED_TASK_INTERVAL_MS,
+  type ScheduledTaskImportance,
+  type ScheduledTaskSchedule,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
@@ -79,4 +83,27 @@ export function isMissedFixedTimeRun(
 ): boolean {
   if (schedule.type !== "fixed_time") return false;
   return DateTime.toEpochMillis(now) - DateTime.toEpochMillis(dueAt) > MISSED_FIXED_TIME_GRACE_MS;
+}
+
+/** Classifications whose runs are issued regardless of how late their slot came due. */
+const ISSUED_REGARDLESS: ReadonlySet<ScheduledTaskImportance> = new Set([
+  "important",
+  "time_sensitive",
+]);
+
+/**
+ * Whether a due run is dropped as missed instead of issued. A fixed-time slot more than the grace
+ * late is skipped, unless the task is classified `important` or `time_sensitive`: that run is
+ * issued regardless — the classification for tasks whose timing matters more than the skip.
+ */
+export function skipsMissedRun(
+  task: {
+    readonly schedule: ScheduledTaskSchedule;
+    readonly importance?: ScheduledTaskImportance | undefined;
+  },
+  dueAt: DateTime.DateTime,
+  now: DateTime.DateTime,
+): boolean {
+  if (task.importance !== undefined && ISSUED_REGARDLESS.has(task.importance)) return false;
+  return isMissedFixedTimeRun(task.schedule, dueAt, now);
 }

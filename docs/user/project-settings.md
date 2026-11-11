@@ -86,6 +86,12 @@ environment's time zone, which may differ from your phone's. Choose **Once**
 to run a task a single time at a date and time in your own time zone. If the
 environment is offline then, the task runs when it is back.
 
+A fixed-time slot that passes while the environment is closed or asleep is
+skipped. Under **Classification**, mark such a task **Important** or
+**Time-sensitive** and its missed slot runs when the environment comes back,
+however late; **Routine** (the default) keeps the skip. The classification
+only applies to fixed-time schedules.
+
 Under **Destination**, choose where runs go. **New thread each run** keeps every
 run separate. The two one-thread choices start a thread on the first run and post
 later runs there: one continues the same conversation, the other starts each run
