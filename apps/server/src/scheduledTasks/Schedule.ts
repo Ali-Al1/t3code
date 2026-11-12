@@ -76,7 +76,7 @@ export function isSameSchedule(a: ScheduledTaskSchedule, b: ScheduledTaskSchedul
 
 const MISSED_FIXED_TIME_GRACE_MS = 10 * MINUTE_MS;
 
-export function isMissedFixedTimeRun(
+function isMissedFixedTimeRun(
   schedule: ScheduledTaskSchedule,
   dueAt: DateTime.DateTime,
   now: DateTime.DateTime,
