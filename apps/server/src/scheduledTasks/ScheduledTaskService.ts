@@ -57,7 +57,7 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as DueHint from "../scheduling/DueHint.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
-import { isMissedFixedTimeRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
+import { isSameSchedule, nextScheduledRunAt, skipsMissedRun } from "./Schedule.ts";
 import {
   redactHeaders,
   redactQuery,
@@ -212,6 +212,7 @@ interface ScheduledTaskRow {
   readonly prompt: string;
   readonly enabled: number;
   readonly schedule_json: string;
+  readonly importance: string | null;
   readonly project_id: string;
   readonly thread_id: string | null;
   readonly thread_mode: string;
@@ -386,6 +387,10 @@ const decodeRow = Effect.fnUntraced(
       prompt: row.prompt,
       enabled: row.enabled === 1,
       schedule,
+      // An unknown stored value reads as routine instead of making the row undecodable.
+      ...(row.importance === "important" || row.importance === "time_sensitive"
+        ? { importance: row.importance }
+        : {}),
       projectId: row.project_id,
       threadId: row.thread_id,
       threadMode: row.thread_mode,
@@ -509,6 +514,7 @@ export const layer = Layer.effect(
         prompt,
         enabled,
         schedule_json,
+        importance,
         project_id,
         thread_id,
         thread_mode,
@@ -551,6 +557,7 @@ export const layer = Layer.effect(
         prompt,
         enabled,
         schedule_json,
+        importance,
         project_id,
         thread_id,
         thread_mode,
@@ -629,6 +636,7 @@ export const layer = Layer.effect(
           prompt,
           enabled,
           schedule_json,
+          importance,
           project_id,
           thread_id,
           thread_mode,
@@ -654,6 +662,7 @@ export const layer = Layer.effect(
           ${task.prompt},
           ${task.enabled ? 1 : 0},
           ${JSON.stringify(task.schedule)},
+          ${task.importance ?? null},
           ${task.projectId},
           ${task.threadId},
           ${scheduledTaskThreadMode(task)},
@@ -680,6 +689,7 @@ export const layer = Layer.effect(
           prompt = excluded.prompt,
           enabled = excluded.enabled,
           schedule_json = excluded.schedule_json,
+          importance = excluded.importance,
           project_id = excluded.project_id,
           -- A first run may bind the thread while this save is in flight; only a
           -- switch to new threads unbinds.
@@ -1168,7 +1178,7 @@ export const layer = Layer.effect(
         due,
         ({ task, dueAt }) =>
           Effect.suspend(() =>
-            isMissedFixedTimeRun(task.schedule, dueAt, now)
+            skipsMissedRun(task, dueAt, now)
               ? rescheduleMissedRun(task, now)
               : runTask(task, "scheduled"),
           ).pipe(
@@ -1331,6 +1341,9 @@ export const layer = Layer.effect(
       // Keep the existing next_run_at when the schedule itself is untouched:
       // editing a title or prompt must not postpone (or resurrect) a due
       // run — only schedule/enabled changes restart the clock.
+
+      // Omitted keeps the stored classification, as webhook filters do; a new task starts routine.
+      const importance = input.importance ?? existingTask?.importance;
       const schedule: ScheduledTask["schedule"] =
         input.schedule.type === "webhook"
           ? {
@@ -1415,6 +1428,7 @@ export const layer = Layer.effect(
         prompt: input.prompt,
         enabled: input.enabled,
         schedule,
+        ...(importance === undefined ? {} : { importance }),
         projectId: input.projectId,
         threadId,
         threadMode,

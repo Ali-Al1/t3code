@@ -21,6 +21,7 @@ import type {
   ProjectId,
   ScheduledTask,
   ScheduledTaskId,
+  ScheduledTaskImportance,
   ScheduledTaskSchedule,
   ScheduledTaskThreadMode,
   ScheduledTaskUpsertInput,
@@ -177,6 +178,7 @@ const EMPTY_DRAFT: DraftState = {
   projectId: "",
   threadId: "",
   threadMode: "new_thread",
+  importance: "routine",
   workspaceMode: "worktree",
   baseRef: "main",
   startFromOrigin: true,
@@ -1198,6 +1200,12 @@ const THREAD_MODE_LABELS: Record<ScheduledTaskThreadMode, string> = {
   fresh_session: "One thread, fresh session each run",
 };
 
+const IMPORTANCE_LABELS: Record<ScheduledTaskImportance, string> = {
+  routine: "Routine",
+  important: "Important",
+  time_sensitive: "Time-sensitive",
+};
+
 function ScheduledTaskDestination({
   environmentId,
   projectId,
@@ -1537,6 +1545,8 @@ function ScheduledTaskEditorForm({
       projectId: selectedProjectId as ProjectId,
       threadId: draft.threadId ? (draft.threadId as ThreadId) : null,
       ...(offersThreadModes ? { threadMode: draft.threadMode } : {}),
+      // Only a fixed-time slot can be missed; other schedules keep whatever is stored.
+      ...(schedule.type === "fixed_time" ? { importance: draft.importance } : {}),
       workspaceStrategy,
       modelSelection,
       // Tasks have no mode picker; a mode above the administrator's ceiling would fail every run.
@@ -2057,41 +2067,78 @@ function ScheduledTaskEditorForm({
                 />
               </div>
             ) : draft.scheduleMode === "fixed" ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="scheduled-task-time">Run at</Label>
-                  <Input
-                    type="time"
-                    id="scheduled-task-time"
-                    nativeInput
-                    className="w-32"
-                    value={draft.timeOfDay}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, timeOfDay: event.target.value }))
-                    }
-                  />
-                  <span className="text-xs text-muted-foreground">on</span>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="scheduled-task-time">Run at</Label>
+                    <Input
+                      type="time"
+                      id="scheduled-task-time"
+                      nativeInput
+                      className="w-32"
+                      value={draft.timeOfDay}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, timeOfDay: event.target.value }))
+                      }
+                    />
+                    <span className="text-xs text-muted-foreground">on</span>
+                  </div>
+                  <ToggleGroup
+                    multiple
+                    variant="outline"
+                    size="sm"
+                    aria-label="Days to run"
+                    value={[...draft.weekdays].map(String)}
+                    onValueChange={(values) => {
+                      if (values.length === 0) return;
+                      setDraft((current) => ({
+                        ...current,
+                        weekdays: new Set(values.map(Number)),
+                      }));
+                    }}
+                  >
+                    {WEEKDAY_ORDER.map((day) => (
+                      <Toggle key={day} value={String(day)} aria-label={WEEKDAY_LABELS[day]}>
+                        {WEEKDAY_SHORT[day]}
+                      </Toggle>
+                    ))}
+                  </ToggleGroup>
                 </div>
-                <ToggleGroup
-                  multiple
-                  variant="outline"
-                  size="sm"
-                  aria-label="Days to run"
-                  value={[...draft.weekdays].map(String)}
-                  onValueChange={(values) => {
-                    if (values.length === 0) return;
-                    setDraft((current) => ({
-                      ...current,
-                      weekdays: new Set(values.map(Number)),
-                    }));
-                  }}
-                >
-                  {WEEKDAY_ORDER.map((day) => (
-                    <Toggle key={day} value={String(day)} aria-label={WEEKDAY_LABELS[day]}>
-                      {WEEKDAY_SHORT[day]}
-                    </Toggle>
-                  ))}
-                </ToggleGroup>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Field
+                    label="Classification"
+                    hint="missed runs"
+                    htmlFor="scheduled-task-importance"
+                  >
+                    <Select
+                      value={draft.importance}
+                      onValueChange={(value) =>
+                        setDraft((current) => ({
+                          ...current,
+                          importance: value as ScheduledTaskImportance,
+                        }))
+                      }
+                    >
+                      <SelectTrigger size="sm" id="scheduled-task-importance">
+                        <SelectValue>{IMPORTANCE_LABELS[draft.importance]}</SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup>
+                        {(Object.keys(IMPORTANCE_LABELS) as ScheduledTaskImportance[]).map(
+                          (importance) => (
+                            <SelectItem key={importance} value={importance}>
+                              {IMPORTANCE_LABELS[importance]}
+                            </SelectItem>
+                          ),
+                        )}
+                      </SelectPopup>
+                    </Select>
+                  </Field>
+                  <p className="max-w-md text-xs text-muted-foreground">
+                    Important and time-sensitive runs start when the environment comes back, however
+                    late the slot passed while it was closed. Routine skips a slot missed by more
+                    than 10 minutes.
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-2">

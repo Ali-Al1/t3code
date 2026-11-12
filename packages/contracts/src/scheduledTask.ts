@@ -231,6 +231,14 @@ export type ScheduledTaskWebhookEndpoint = typeof ScheduledTaskWebhookEndpoint.T
 export const ScheduledTaskThreadMode = Schema.Literals(["new_thread", "continue", "fresh_session"]);
 export type ScheduledTaskThreadMode = typeof ScheduledTaskThreadMode.Type;
 
+/**
+ * Classification of a task's timing importance. `important` and `time_sensitive` tasks are issued
+ * regardless: their fixed-time run starts when the environment comes back, however late the slot
+ * passed while it was closed or asleep. `routine` (the default) keeps the missed-run skip.
+ */
+export const ScheduledTaskImportance = Schema.Literals(["routine", "important", "time_sensitive"]);
+export type ScheduledTaskImportance = typeof ScheduledTaskImportance.Type;
+
 /** Servers before thread modes omit it; their bound tasks continue the conversation. */
 export function scheduledTaskThreadMode(
   task: Pick<ScheduledTask, "threadId" | "threadMode">,
@@ -244,6 +252,8 @@ export const ScheduledTask = Schema.Struct({
   prompt: TrimmedNonEmptyString,
   enabled: Schema.Boolean,
   schedule: ScheduledTaskSchedule,
+  /** Classification of the task's timing importance. Omitted: `routine`. */
+  importance: Schema.optional(ScheduledTaskImportance),
   projectId: ProjectId,
   threadId: Schema.NullOr(ThreadId),
   threadMode: Schema.optional(ScheduledTaskThreadMode),
@@ -284,6 +294,12 @@ export const ScheduledTaskUpsertInput = Schema.Struct({
   prompt: TrimmedNonEmptyString,
   enabled: Schema.Boolean,
   schedule: ScheduledTaskUpsertSchedule,
+  /**
+   * Classification of the task's timing importance: `important` and `time_sensitive` runs are
+   * issued regardless of how late their slot was. Omitted: keep the stored one (`routine` for a
+   * new task).
+   */
+  importance: Schema.optional(ScheduledTaskImportance),
   projectId: ProjectId,
   threadId: Schema.optional(Schema.NullOr(ThreadId)),
   /** Omitted: keep the stored mode, or derive it from `threadId` for a new or rebound task. */

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 
-import { isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
+import type { ScheduledTaskSchedule } from "@t3tools/contracts";
+
+import { isSameSchedule, nextScheduledRunAt, skipsMissedRun } from "./Schedule.ts";
 
 describe("scheduled task schedule calculation", () => {
   it("skips to the next matching fixed-time weekday", () => {
@@ -80,6 +82,42 @@ describe("scheduled task schedule calculation", () => {
         { type: "interval", everyMs: 60_000 },
         { type: "fixed_time", timeOfDay: "09:00" },
       ),
+    ).toBe(false);
+  });
+});
+
+describe("missed fixed-time runs", () => {
+  const dueAt = DateTime.makeZonedUnsafe(
+    { year: 2026, month: 11, day: 10, hour: 7, minute: 30, second: 0, millisecond: 0 },
+    { timeZone: DateTime.zoneMakeLocal(), adjustForTimeZone: true },
+  );
+  const withinGrace = DateTime.add(dueAt, { minutes: 5 });
+  const twoHoursLate = DateTime.add(dueAt, { hours: 2 });
+  const fixed: ScheduledTaskSchedule = { type: "fixed_time", timeOfDay: "07:30" };
+
+  it("skips a routine fixed-time run more than the grace late", () => {
+    expect(skipsMissedRun({ schedule: fixed }, dueAt, withinGrace)).toBe(false);
+    expect(skipsMissedRun({ schedule: fixed }, dueAt, twoHoursLate)).toBe(true);
+    expect(skipsMissedRun({ schedule: fixed, importance: "routine" }, dueAt, twoHoursLate)).toBe(
+      true,
+    );
+  });
+
+  it("issues an important or time-sensitive run regardless of how late its slot was", () => {
+    expect(skipsMissedRun({ schedule: fixed, importance: "important" }, dueAt, twoHoursLate)).toBe(
+      false,
+    );
+    expect(
+      skipsMissedRun({ schedule: fixed, importance: "time_sensitive" }, dueAt, twoHoursLate),
+    ).toBe(false);
+    // The classification only reads on fixed-time schedules; other kinds were never skipped.
+    const interval: ScheduledTaskSchedule = { type: "interval", everyMs: 60_000 };
+    expect(
+      skipsMissedRun({ schedule: interval, importance: "important" }, dueAt, twoHoursLate),
+    ).toBe(false);
+    const once: ScheduledTaskSchedule = { type: "once", runAt: "2026-11-10T07:30:00.000Z" };
+    expect(
+      skipsMissedRun({ schedule: once, importance: "time_sensitive" }, dueAt, twoHoursLate),
     ).toBe(false);
   });
 });
