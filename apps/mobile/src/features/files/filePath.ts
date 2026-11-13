@@ -5,7 +5,7 @@ import {
   isWorkspaceAudioPreviewPath,
   isWorkspaceVideoPreviewPath,
 } from "@t3tools/shared/filePreview";
-import { expandMsysDrivePath } from "@t3tools/shared/path";
+import { expandMsysDrivePath, stripSlashPrefixedWindowsDrive } from "@t3tools/shared/path";
 
 function isWindowsAbsolutePath(value: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
@@ -70,7 +70,9 @@ export function resolveFileLinkPath(
   // link names `C:/...` rather than a directory named `c`.
   return expandMsysDrivePath(
     targetPath,
-    workspaceRoot !== null && workspaceRoot !== undefined && isWindowsAbsolutePath(workspaceRoot),
+    workspaceRoot !== null &&
+      workspaceRoot !== undefined &&
+      isWindowsAbsolutePath(stripSlashPrefixedWindowsDrive(workspaceRoot)),
   );
 }
 
