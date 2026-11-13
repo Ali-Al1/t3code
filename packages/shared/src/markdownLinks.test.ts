@@ -218,6 +218,19 @@ describe("resolveMarkdownFileLinkTarget with Git Bash drives", () => {
     ).toBe("C:/Users/me/workspace/shot.png");
   });
 
+  it("accepts extensionless files and folders in Git Bash spelling for a Windows project", () => {
+    expect(
+      resolveMarkdownFileLinkTarget("/c/Users/me/project/scripts/deploy", "C:\\Users\\me\\project"),
+    ).toBe("C:/Users/me/project/scripts/deploy");
+    expect(resolveMarkdownFileLinkTarget("/c/Users/me/project/src/", "C:/Users/me/project")).toBe(
+      "C:/Users/me/project/src/",
+    );
+    // Elsewhere an extensionless `/c/...` path keeps the usual POSIX rules.
+    expect(resolveMarkdownFileLinkTarget("/c/Users/me/project/scripts/deploy", "/home/me")).toBe(
+      null,
+    );
+  });
+
   it("keeps a drive-shaped link a plain POSIX path without a Windows project root", () => {
     expect(resolveMarkdownFileLinkTarget("/c/Users/me/report.pdf", "/home/me/project")).toBe(
       "/c/Users/me/report.pdf",

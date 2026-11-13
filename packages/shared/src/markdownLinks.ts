@@ -302,7 +302,15 @@ function hasExternalScheme(path: string): boolean {
   return !POSITION_ONLY_PATTERN.test(rest);
 }
 
-export function parseMarkdownFileLink(href: string): FilePathPosition | null {
+/**
+ * `isWindowsHost` must come from a known Windows host (such as its project root): it reads a
+ * Git Bash drive spelling (`/c/...`) as `C:/...` before deciding the link names a file, so
+ * extensionless files and folders in that spelling count too. Elsewhere `/c/...` is a path.
+ */
+export function parseMarkdownFileLink(
+  href: string,
+  isWindowsHost = false,
+): FilePathPosition | null {
   const normalized = normalizeMarkdownLinkDestination(href);
   if (normalized.length === 0 || normalized.startsWith("#") || normalized.startsWith("//")) {
     return null;
@@ -311,7 +319,10 @@ export function parseMarkdownFileLink(href: string): FilePathPosition | null {
   const source =
     (normalized.toLowerCase().startsWith("file:") ? parseFileUrlHref(normalized) : null) ??
     splitMarkdownLinkSearchAndHash(normalized);
-  const path = stripSlashPrefixedWindowsDrive(safeDecodeURIComponent(source.path.trim()));
+  const path = expandMsysDrivePath(
+    stripSlashPrefixedWindowsDrive(safeDecodeURIComponent(source.path.trim())),
+    isWindowsHost,
+  );
   const hash = safeDecodeURIComponent(source.hash.trim());
   if (path.length === 0 || hasExternalScheme(path)) return null;
 
@@ -417,7 +428,9 @@ export function resolveMarkdownFileLinkTarget(
   baseDir: string | undefined = cwd,
 ): string | null {
   if (!href) return null;
-  const target = parseMarkdownFileLink(href);
+  // An agent in Git Bash spells the drive `/c/...`; a Windows project root is what says
+  // such a link names `C:/...` instead of the `\c\...` directory Windows would read.
+  const target = parseMarkdownFileLink(href, isWindowsHostRoot(cwd) || isWindowsHostRoot(baseDir));
   if (!target) return null;
 
   const pathWithPosition = formatFilePathPosition(target);
@@ -427,12 +440,7 @@ export function resolveMarkdownFileLinkTarget(
     if (isNetworkPath(target.path) && workspaceRelativeFilePath(target.path, cwd) === null) {
       return null;
     }
-    // An agent in Git Bash spells the drive `/c/...`; a Windows project root is what says
-    // such a link names `C:/...` instead of the `\c\...` directory Windows would read.
-    return expandMsysDrivePath(
-      pathWithPosition,
-      isWindowsHostRoot(cwd) || isWindowsHostRoot(baseDir),
-    );
+    return pathWithPosition;
   }
   if (!baseDir) return null;
   return resolvePathLinkTarget(pathWithPosition, baseDir);
