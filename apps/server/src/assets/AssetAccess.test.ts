@@ -611,6 +611,27 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
+  // An agent in Git Bash spells the drive `/c/...`; the Windows host must look up the file
+  // that spelling names, never the `c` directory Windows would otherwise read on its drive.
+  it.effect("reads a Git Bash drive media path as the Windows path it names", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-media-msys-" });
+      const error = yield* issueAssetUrl({
+        resource: {
+          _tag: "media-file",
+          threadId: ThreadId.make("thread-1"),
+          path: "/c/Users/alice/report.pdf",
+        },
+        workspaceRoot: root,
+      }).pipe(Effect.provideService(HostProcess.Platform, "win32"), Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "AssetWorkspaceAssetNotFoundError",
+        checkedPath: expect.stringMatching(/C:\/Users\/alice\/report\.pdf$/),
+      });
+    }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect.skipIf(!symlinksSupported)(
     "rejects non-previewable files, disguised targets, and directories",
     () =>

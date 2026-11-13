@@ -196,3 +196,32 @@ describe("resolveMarkdownFileLinkTarget", () => {
     );
   });
 });
+
+describe("resolveMarkdownFileLinkTarget with Git Bash drives", () => {
+  // An agent in Git Bash spells the drive `/c/...`; only a Windows project root says which
+  // file it names, because Windows would read the authored spelling as a `c` directory.
+  it("reads a Git Bash drive link as the Windows path it names for a Windows project", () => {
+    expect(
+      resolveMarkdownFileLinkTarget(
+        "/c/Users/me/workspace/2026-10-26-accurx-000490272892.pdf",
+        "C:/Users/me/workspace",
+      ),
+    ).toBe("C:/Users/me/workspace/2026-10-26-accurx-000490272892.pdf");
+    expect(
+      resolveMarkdownFileLinkTarget("/c/Users/me/project/src/main.ts:12", "C:/Users/me/project"),
+    ).toBe("C:/Users/me/project/src/main.ts:12");
+    expect(
+      resolveMarkdownFileLinkTarget(
+        "file:///c/Users/me/workspace/shot.png",
+        "C:/Users/me/workspace",
+      ),
+    ).toBe("C:/Users/me/workspace/shot.png");
+  });
+
+  it("keeps a drive-shaped link a plain POSIX path without a Windows project root", () => {
+    expect(resolveMarkdownFileLinkTarget("/c/Users/me/report.pdf", "/home/me/project")).toBe(
+      "/c/Users/me/report.pdf",
+    );
+    expect(resolveMarkdownFileLinkTarget("/c/Users/me/report.pdf")).toBe("/c/Users/me/report.pdf");
+  });
+});

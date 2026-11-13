@@ -1,4 +1,5 @@
 import {
+  expandMsysDrivePath,
   isNetworkPath,
   isWindowsAbsolutePath,
   stripSlashPrefixedWindowsDrive,
@@ -406,6 +407,10 @@ export function extractMarkdownLinkHrefs(markdown: string): string[] {
   return hrefs;
 }
 
+function isWindowsHostRoot(root: string | undefined): boolean {
+  return root !== undefined && isWindowsAbsolutePath(stripSlashPrefixedWindowsDrive(root));
+}
+
 export function resolveMarkdownFileLinkTarget(
   href: string | undefined,
   cwd?: string,
@@ -419,9 +424,15 @@ export function resolveMarkdownFileLinkTarget(
   if (!isRelativeFilePath(pathWithPosition)) {
     // Opening a network path makes Windows sign in to its host with the user's
     // NTLM credentials, so only the project's own share becomes a file link.
-    return isNetworkPath(target.path) && workspaceRelativeFilePath(target.path, cwd) === null
-      ? null
-      : pathWithPosition;
+    if (isNetworkPath(target.path) && workspaceRelativeFilePath(target.path, cwd) === null) {
+      return null;
+    }
+    // An agent in Git Bash spells the drive `/c/...`; a Windows project root is what says
+    // such a link names `C:/...` instead of the `\c\...` directory Windows would read.
+    return expandMsysDrivePath(
+      pathWithPosition,
+      isWindowsHostRoot(cwd) || isWindowsHostRoot(baseDir),
+    );
   }
   if (!baseDir) return null;
   return resolvePathLinkTarget(pathWithPosition, baseDir);

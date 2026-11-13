@@ -13,6 +13,7 @@ import {
   type LaunchEditorInput,
 } from "@t3tools/contracts";
 import { resolveEditorCommand } from "@t3tools/shared/editor";
+import { expandMsysDrivePath, isWindowsDrivePath } from "@t3tools/shared/path";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   isCommandAvailable,
@@ -470,6 +471,9 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
     "externalLauncher.cwd": input.cwd,
     "externalLauncher.platform": platform,
   });
+  // An agent in Git Bash spells the drive `/c/...`; editors and Explorer would read that
+  // as `\c\...` and open nothing, so the host's own spelling wins at this boundary.
+  const targetPath = expandMsysDrivePath(input.cwd, platform === "win32");
   const editorDef = EDITORS.find((editor) => editor.id === input.editor);
   if (!editorDef) {
     return yield* new ExternalLauncherUnknownEditorError({ editor: input.editor });
@@ -485,9 +489,9 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
     );
     return {
       editor: editorDef.id,
-      target: input.cwd,
+      target: targetPath,
       command,
-      args: [...baseArgs, ...resolveCommandEditorArgs(editorDef, input.cwd)],
+      args: [...baseArgs, ...resolveCommandEditorArgs(editorDef, targetPath)],
     };
   }
 
@@ -501,20 +505,23 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
   }
 
   if (input.reveal === true) {
-    return yield* resolveFileManagerRevealLaunch(input.cwd, platform, env, command);
+    return yield* resolveFileManagerRevealLaunch(targetPath, platform, env, command);
   }
 
   return {
     editor: editorDef.id,
-    target: input.cwd,
+    target: targetPath,
     command,
     args:
-      command === "explorer.exe" && env.WSL_DISTRO_NAME !== undefined
-        ? [resolveWslFileManagerPath(input.cwd, env.WSL_DISTRO_NAME)]
+      // Only a POSIX path names the distro's tree; Explorer opens a drive path itself.
+      command === "explorer.exe" &&
+      env.WSL_DISTRO_NAME !== undefined &&
+      !isWindowsDrivePath(targetPath)
+        ? [resolveWslFileManagerPath(targetPath, env.WSL_DISTRO_NAME)]
         : platform === "win32"
           ? // Explorer interprets / as a switch and silently opens a fallback folder.
-            [normalizeWindowsFileManagerPath(input.cwd)]
-          : [input.cwd],
+            [normalizeWindowsFileManagerPath(targetPath)]
+          : [targetPath],
   };
 });
 
