@@ -331,7 +331,8 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.test_web != 'false' }}
     runs-on: ${{ github.repository_owner == 'pingdotgg' && 'blacksmith-8vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
-    timeout-minutes: 10
+    # A fork's GitHub-hosted runner takes 8-11 minutes for this suite.
+    timeout-minutes: ${{ github.repository_owner == 'pingdotgg' && 10 || 20 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
