@@ -43,6 +43,17 @@ describe("resolveWorkspaceRelativeFilePath", () => {
     ).toBeNull();
   });
 
+  it("reads a Git Bash drive link against a Windows workspace", () => {
+    expect(
+      resolveWorkspaceRelativeFilePath("C:\\Users\\jo\\repo", "/c/Users/jo/repo/src/main.ts"),
+    ).toBe("src/main.ts");
+    expect(resolveFileLinkPath("C:\\Users\\jo\\repo", "/c/Users/jo/notes.md")).toBe(
+      "C:/Users/jo/notes.md",
+    );
+    // Elsewhere `/c/...` is an ordinary directory named `c`.
+    expect(resolveFileLinkPath("/home/jo/repo", "/c/notes.md")).toBe("/c/notes.md");
+  });
+
   it("rejects paths outside the workspace", () => {
     expect(resolveWorkspaceRelativeFilePath("/repo", "/other/main.ts")).toBeNull();
     expect(resolveWorkspaceRelativeFilePath("/repo", "../other/main.ts")).toBeNull();
