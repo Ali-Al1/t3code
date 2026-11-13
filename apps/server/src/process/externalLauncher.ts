@@ -13,7 +13,7 @@ import {
   type LaunchEditorInput,
 } from "@t3tools/contracts";
 import { resolveEditorCommand } from "@t3tools/shared/editor";
-import { expandMsysDrivePath, isWindowsDrivePath } from "@t3tools/shared/path";
+import { expandMsysDrivePath } from "@t3tools/shared/path";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   isCommandAvailable,
@@ -513,10 +513,7 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
     target: targetPath,
     command,
     args:
-      // Only a POSIX path names the distro's tree; Explorer opens a drive path itself.
-      command === "explorer.exe" &&
-      env.WSL_DISTRO_NAME !== undefined &&
-      !isWindowsDrivePath(targetPath)
+      command === "explorer.exe" && env.WSL_DISTRO_NAME !== undefined
         ? [resolveWslFileManagerPath(targetPath, env.WSL_DISTRO_NAME)]
         : platform === "win32"
           ? // Explorer interprets / as a switch and silently opens a fallback folder.
