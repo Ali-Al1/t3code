@@ -1,4 +1,5 @@
 import {
+  expandMsysDrivePath,
   isNetworkPath,
   isWindowsAbsolutePath,
   stripSlashPrefixedWindowsDrive,
@@ -249,7 +250,9 @@ export function markdownDestinationHostPath(source: string): string | null {
 }
 
 export function isMarkdownFileLinkLabel(label: string, href: string): boolean {
-  const destination = parseMarkdownFileLink(href);
+  // Callers ask only about a link that already resolved, so a Git Bash folder spelling that
+  // only a Windows root accepts was accepted by one.
+  const destination = parseMarkdownFileLink(href) ?? parseMarkdownFileLink(href, true);
   if (!destination) return false;
   const normalize = (path: string) =>
     path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "");
@@ -260,10 +263,12 @@ export function isMarkdownFileLinkLabel(label: string, href: string): boolean {
   ) {
     return false;
   }
-  let labelPath = normalize(labelPosition.path);
-  let destinationPath = normalize(destination.path);
+  // Both sides read a Git Bash drive spelling as its drive; this only decides whether the
+  // label repeats, so treating `/c/x` as `C:/x` on any host is harmless.
+  let labelPath = expandMsysDrivePath(normalize(labelPosition.path), true);
+  let destinationPath = expandMsysDrivePath(normalize(destination.path), true);
   if (labelPath.length === 0) return true;
-  if (isWindowsAbsolutePath(destination.path)) {
+  if (isWindowsAbsolutePath(labelPath) || isWindowsAbsolutePath(destinationPath)) {
     labelPath = labelPath.toLowerCase();
     destinationPath = destinationPath.toLowerCase();
   }
@@ -301,7 +306,17 @@ function hasExternalScheme(path: string): boolean {
   return !POSITION_ONLY_PATTERN.test(rest);
 }
 
-export function parseMarkdownFileLink(href: string): FilePathPosition | null {
+const MSYS_DRIVE_FOLDER_PATTERN = /^\/[A-Za-z]\/[^/]+\/./;
+
+/**
+ * `isWindowsHost` must come from a known Windows host (such as its project root): it reads a
+ * Git Bash drive spelling (`/c/...`) as `C:/...` before deciding the link names a file, so
+ * extensionless files and folders in that spelling count too. Elsewhere `/c/...` is a path.
+ */
+export function parseMarkdownFileLink(
+  href: string,
+  isWindowsHost = false,
+): FilePathPosition | null {
   const normalized = normalizeMarkdownLinkDestination(href);
   if (normalized.length === 0 || normalized.startsWith("#") || normalized.startsWith("//")) {
     return null;
@@ -310,12 +325,18 @@ export function parseMarkdownFileLink(href: string): FilePathPosition | null {
   const source =
     (normalized.toLowerCase().startsWith("file:") ? parseFileUrlHref(normalized) : null) ??
     splitMarkdownLinkSearchAndHash(normalized);
-  const path = stripSlashPrefixedWindowsDrive(safeDecodeURIComponent(source.path.trim()));
+  const authoredPath = stripSlashPrefixedWindowsDrive(safeDecodeURIComponent(source.path.trim()));
   const hash = safeDecodeURIComponent(source.hash.trim());
-  if (path.length === 0 || hasExternalScheme(path)) return null;
+  if (authoredPath.length === 0 || hasExternalScheme(authoredPath)) return null;
 
-  const position = splitFilePathPosition(path, hash);
-  return looksLikeFilePath(position.path, path) ? position : null;
+  const authored = splitFilePathPosition(authoredPath, hash);
+  if (looksLikeFilePath(authored.path, authoredPath)) {
+    return { ...authored, path: expandMsysDrivePath(authored.path, isWindowsHost) };
+  }
+  // Only a drive with a folder under it vouches for an extensionless Git Bash spelling, so
+  // short `/a/g` or `/r/rust` text never becomes a link to a drive nobody meant.
+  if (!isWindowsHost || !MSYS_DRIVE_FOLDER_PATTERN.test(authoredPath)) return null;
+  return { ...authored, path: expandMsysDrivePath(authored.path, true) };
 }
 
 const FENCED_CODE_SEGMENT_PATTERN = /(```[\s\S]*?(?:```|$))/;
@@ -406,22 +427,29 @@ export function extractMarkdownLinkHrefs(markdown: string): string[] {
   return hrefs;
 }
 
+function isWindowsHostRoot(root: string | undefined): boolean {
+  return root !== undefined && isWindowsAbsolutePath(stripSlashPrefixedWindowsDrive(root));
+}
+
 export function resolveMarkdownFileLinkTarget(
   href: string | undefined,
   cwd?: string,
   baseDir: string | undefined = cwd,
 ): string | null {
   if (!href) return null;
-  const target = parseMarkdownFileLink(href);
+  // An agent in Git Bash spells the drive `/c/...`; a Windows project root is what says
+  // such a link names `C:/...` instead of the `\c\...` directory Windows would read.
+  const target = parseMarkdownFileLink(href, isWindowsHostRoot(cwd) || isWindowsHostRoot(baseDir));
   if (!target) return null;
 
   const pathWithPosition = formatFilePathPosition(target);
   if (!isRelativeFilePath(pathWithPosition)) {
     // Opening a network path makes Windows sign in to its host with the user's
     // NTLM credentials, so only the project's own share becomes a file link.
-    return isNetworkPath(target.path) && workspaceRelativeFilePath(target.path, cwd) === null
-      ? null
-      : pathWithPosition;
+    if (isNetworkPath(target.path) && workspaceRelativeFilePath(target.path, cwd) === null) {
+      return null;
+    }
+    return pathWithPosition;
   }
   if (!baseDir) return null;
   return resolvePathLinkTarget(pathWithPosition, baseDir);

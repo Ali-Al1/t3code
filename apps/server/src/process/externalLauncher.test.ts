@@ -906,3 +906,12 @@ it.effect("starts a Windows command shim for unicode paths with cmd metacharacte
     );
   }),
 );
+
+it.effect("expands a Git Bash drive path before launching a Windows editor", () =>
+  Effect.gen(function* () {
+    const { exit, spawned } = yield* launchWindowsShimEditor("/c/Users/jo/project/file.ts:3:7");
+    assert.isTrue(Exit.isSuccess(exit));
+    assert.ok(spawned);
+    assert.isTrue(spawned.command.endsWith(' ^"--goto^" ^"C:/Users/jo/project/file.ts:3:7^"'));
+  }),
+);

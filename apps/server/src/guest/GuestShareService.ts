@@ -20,7 +20,9 @@ import {
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { chatMarkdownImageSources } from "@t3tools/shared/markdownPipeline";
+import { expandMsysDrivePath } from "@t3tools/shared/path";
 import { htmlRenderFromToolItem } from "@t3tools/shared/toolOutput";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -738,8 +740,11 @@ const make = Effect.gen(function* () {
     ) {
       return yield* unavailable;
     }
+    // The reply's own spelling authorized the image above; an agent in Git Bash spells a
+    // drive `/c/...`, which Windows would read as `\c\...`, so the file opens by the host's.
+    const hostPath = expandMsysDrivePath(path, yield* HostProcess.isWindows);
     // The bytes must be the image the name says, as for a guest's own upload.
-    const header = yield* fileSystem.open(path, { flag: "r" }).pipe(
+    const header = yield* fileSystem.open(hostPath, { flag: "r" }).pipe(
       Effect.flatMap((file) => file.readAlloc(GUEST_UPLOAD_HEADER_BYTES)),
       Effect.scoped,
       Effect.mapError(() => unavailable),
@@ -747,7 +752,7 @@ const make = Effect.gen(function* () {
     if (Option.isNone(header) || !matchesImageSignature(mimeType, header.value)) {
       return yield* unavailable;
     }
-    return { path, mimeType };
+    return { path: hostPath, mimeType };
   });
 
   return GuestShareService.of({

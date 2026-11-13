@@ -38,4 +38,37 @@ describe("classifyMarkdownImageSource", () => {
       _tag: "Blocked",
     });
   });
+
+  // An agent in Git Bash spells the drive `/c/...`; only a Windows project root says which
+  // file it names, because Windows would read the authored spelling as a `c` directory.
+  it("reads a Git Bash drive image as the Windows path it names for a Windows project", () => {
+    expect(
+      classifyMarkdownImageSource(
+        "/c/Users/dara/project/images/result.png",
+        "C:/Users/dara/project",
+      ),
+    ).toEqual({
+      _tag: "WorkspaceFile",
+      path: "C:/Users/dara/project/images/result.png",
+    });
+    expect(
+      classifyMarkdownImageSource(
+        "file:///c/Users/dara/project/images/result.png",
+        "C:/Users/dara/project",
+      ),
+    ).toEqual({
+      _tag: "WorkspaceFile",
+      path: "C:/Users/dara/project/images/result.png",
+    });
+    expect(
+      classifyMarkdownImageSource("/c/Users/dara/project/images/result.png", "/home/dara/project"),
+    ).toEqual({
+      _tag: "WorkspaceFile",
+      path: "/c/Users/dara/project/images/result.png",
+    });
+    expect(classifyMarkdownImageSource("/c/Users/dara/project/images/result.png")).toEqual({
+      _tag: "WorkspaceFile",
+      path: "/c/Users/dara/project/images/result.png",
+    });
+  });
 });
