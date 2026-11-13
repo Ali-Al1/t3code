@@ -230,6 +230,15 @@ describe("resolveMarkdownFileLinkTarget with Git Bash drives", () => {
       expect(resolveMarkdownFileLinkTarget(text, "C:/Users/me/project")).toBeNull();
     }
     expect(isMarkdownFileLinkLabel("deploy", "/c/Users/me/project/scripts/deploy")).toBe(true);
+    for (const href of ["/c/Users/me/project/scripts/deploy", "/c/Users/me/project/src/"]) {
+      expect(isMarkdownFileLinkLabel(href, href)).toBe(true);
+    }
+    expect(
+      isMarkdownFileLinkLabel(
+        "C:\\Users\\me\\project\\src\\main.ts",
+        "/c/Users/me/project/src/main.ts",
+      ),
+    ).toBe(true);
     // Elsewhere an extensionless `/c/...` path keeps the usual POSIX rules.
     expect(resolveMarkdownFileLinkTarget("/c/Users/me/project/scripts/deploy", "/home/me")).toBe(
       null,

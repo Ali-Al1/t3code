@@ -263,10 +263,12 @@ export function isMarkdownFileLinkLabel(label: string, href: string): boolean {
   ) {
     return false;
   }
-  let labelPath = normalize(labelPosition.path);
-  let destinationPath = normalize(destination.path);
+  // Both sides read a Git Bash drive spelling as its drive; this only decides whether the
+  // label repeats, so treating `/c/x` as `C:/x` on any host is harmless.
+  let labelPath = expandMsysDrivePath(normalize(labelPosition.path), true);
+  let destinationPath = expandMsysDrivePath(normalize(destination.path), true);
   if (labelPath.length === 0) return true;
-  if (isWindowsAbsolutePath(destination.path)) {
+  if (isWindowsAbsolutePath(labelPath) || isWindowsAbsolutePath(destinationPath)) {
     labelPath = labelPath.toLowerCase();
     destinationPath = destinationPath.toLowerCase();
   }
@@ -334,8 +336,7 @@ export function parseMarkdownFileLink(
   // Only a drive with a folder under it vouches for an extensionless Git Bash spelling, so
   // short `/a/g` or `/r/rust` text never becomes a link to a drive nobody meant.
   if (!isWindowsHost || !MSYS_DRIVE_FOLDER_PATTERN.test(authoredPath)) return null;
-  const expanded = { ...authored, path: expandMsysDrivePath(authored.path, true) };
-  return looksLikeFilePath(expanded.path, expanded.path) ? expanded : null;
+  return { ...authored, path: expandMsysDrivePath(authored.path, true) };
 }
 
 const FENCED_CODE_SEGMENT_PATTERN = /(```[\s\S]*?(?:```|$))/;
