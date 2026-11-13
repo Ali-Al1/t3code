@@ -250,7 +250,9 @@ export function markdownDestinationHostPath(source: string): string | null {
 }
 
 export function isMarkdownFileLinkLabel(label: string, href: string): boolean {
-  const destination = parseMarkdownFileLink(href);
+  // Callers ask only about a link that already resolved, so a Git Bash folder spelling that
+  // only a Windows root accepts was accepted by one.
+  const destination = parseMarkdownFileLink(href) ?? parseMarkdownFileLink(href, true);
   if (!destination) return false;
   const normalize = (path: string) =>
     path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "");
@@ -302,6 +304,8 @@ function hasExternalScheme(path: string): boolean {
   return !POSITION_ONLY_PATTERN.test(rest);
 }
 
+const MSYS_DRIVE_FOLDER_PATTERN = /^\/[A-Za-z]\/[^/]+\/./;
+
 /**
  * `isWindowsHost` must come from a known Windows host (such as its project root): it reads a
  * Git Bash drive spelling (`/c/...`) as `C:/...` before deciding the link names a file, so
@@ -319,15 +323,19 @@ export function parseMarkdownFileLink(
   const source =
     (normalized.toLowerCase().startsWith("file:") ? parseFileUrlHref(normalized) : null) ??
     splitMarkdownLinkSearchAndHash(normalized);
-  const path = expandMsysDrivePath(
-    stripSlashPrefixedWindowsDrive(safeDecodeURIComponent(source.path.trim())),
-    isWindowsHost,
-  );
+  const authoredPath = stripSlashPrefixedWindowsDrive(safeDecodeURIComponent(source.path.trim()));
   const hash = safeDecodeURIComponent(source.hash.trim());
-  if (path.length === 0 || hasExternalScheme(path)) return null;
+  if (authoredPath.length === 0 || hasExternalScheme(authoredPath)) return null;
 
-  const position = splitFilePathPosition(path, hash);
-  return looksLikeFilePath(position.path, path) ? position : null;
+  const authored = splitFilePathPosition(authoredPath, hash);
+  if (looksLikeFilePath(authored.path, authoredPath)) {
+    return { ...authored, path: expandMsysDrivePath(authored.path, isWindowsHost) };
+  }
+  // Only a drive with a folder under it vouches for an extensionless Git Bash spelling, so
+  // short `/a/g` or `/r/rust` text never becomes a link to a drive nobody meant.
+  if (!isWindowsHost || !MSYS_DRIVE_FOLDER_PATTERN.test(authoredPath)) return null;
+  const expanded = { ...authored, path: expandMsysDrivePath(authored.path, true) };
+  return looksLikeFilePath(expanded.path, expanded.path) ? expanded : null;
 }
 
 const FENCED_CODE_SEGMENT_PATTERN = /(```[\s\S]*?(?:```|$))/;

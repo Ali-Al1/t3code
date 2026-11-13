@@ -225,6 +225,11 @@ describe("resolveMarkdownFileLinkTarget with Git Bash drives", () => {
     expect(resolveMarkdownFileLinkTarget("/c/Users/me/project/src/", "C:/Users/me/project")).toBe(
       "C:/Users/me/project/src/",
     );
+    // Short regex or route text is not a drive link just because the project is on Windows.
+    for (const text of ["/a/g", "/x/i", "/r/rust", "/u/spez", "/c/Users"]) {
+      expect(resolveMarkdownFileLinkTarget(text, "C:/Users/me/project")).toBeNull();
+    }
+    expect(isMarkdownFileLinkLabel("deploy", "/c/Users/me/project/scripts/deploy")).toBe(true);
     // Elsewhere an extensionless `/c/...` path keeps the usual POSIX rules.
     expect(resolveMarkdownFileLinkTarget("/c/Users/me/project/scripts/deploy", "/home/me")).toBe(
       null,
