@@ -677,7 +677,7 @@ export const OrchestratorMcpScheduleTaskInput = Schema.Struct({
   importance: Schema.optional(
     ScheduledTaskImportance.annotate({
       description:
-        "Default routine: a fixed-time run missed by over 10 minutes is skipped. important or time_sensitive: it runs when the environment is back, however late.",
+        "Default routine skips a fixed-time run over 10 minutes late; important and time_sensitive run it late.",
     }),
   ),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
