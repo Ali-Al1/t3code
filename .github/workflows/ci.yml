@@ -538,7 +538,9 @@ jobs:
     name: Mobile Native Static Analysis
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.mobile_native != 'false' }}
-    runs-on: ${{ github.repository_owner == 'pingdotgg' && 'blacksmith-6vcpu-macos-26' || 'macos-26' }}
+    # A fork's hosted macos-26 (arm64) job never gets a runner ("not acquired
+    # ... capacity constraints"); the Intel image does.
+    runs-on: ${{ github.repository_owner == 'pingdotgg' && 'blacksmith-6vcpu-macos-26' || 'macos-15-intel' }}
     timeout-minutes: 10
     steps:
       - name: Checkout
