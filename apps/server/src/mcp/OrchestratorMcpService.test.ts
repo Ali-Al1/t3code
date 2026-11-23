@@ -2779,6 +2779,7 @@ describe("OrchestratorMcpService provider resolution", () => {
       saved: Ref.Ref<ReadonlyArray<ScheduledTask["workspaceStrategy"]>>,
       task: ScheduledTask = existing,
       modes?: Ref.Ref<ReadonlyArray<ScheduledTaskUpsertInput["threadMode"]>>,
+      inputs?: Ref.Ref<ReadonlyArray<ScheduledTaskUpsertInput>>,
     ) =>
       OrchestratorMcpService.layer.pipe(
         Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
@@ -2814,6 +2815,11 @@ describe("OrchestratorMcpService provider resolution", () => {
                       ? Effect.void
                       : Ref.update(modes, (all) => [...all, input.threadMode]),
                   ),
+                  Effect.andThen(
+                    inputs === undefined
+                      ? Effect.void
+                      : Ref.update(inputs, (all) => [...all, input]),
+                  ),
                   Effect.as({ task }),
                 ),
             }),
@@ -2838,6 +2844,42 @@ describe("OrchestratorMcpService provider resolution", () => {
         assert.deepEqual(yield* Ref.get(saved), [
           { type: "worktree", baseRef: "origin/master", startFromOrigin: true },
         ]);
+      }),
+    );
+
+    it.effect("passes the missed-run classification through and reports it", () =>
+      Effect.gen(function* () {
+        const inputs = yield* Ref.make<ReadonlyArray<ScheduledTaskUpsertInput>>([]);
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
+          Effect.provide(
+            service(
+              masterRepository,
+              yield* Ref.make<ReadonlyArray<ScheduledTask["workspaceStrategy"]>>([]),
+              { ...existing, importance: "time_sensitive" },
+              undefined,
+              inputs,
+            ),
+          ),
+        );
+        const created = yield* mcp.scheduleTask(client, {
+          projectId,
+          prompt: "Check the build",
+          schedule,
+          importance: "important",
+        });
+        yield* mcp.updateScheduledTask(client, { scheduledTaskId: existing.id, title: "Renamed" });
+        yield* mcp.updateScheduledTask(client, {
+          scheduledTaskId: existing.id,
+          importance: "routine",
+        });
+        // Omitted on update keeps the stored classification, which the service resolves.
+        assert.deepEqual(
+          (yield* Ref.get(inputs)).map((input) => input.importance),
+          ["important", undefined, "routine"],
+        );
+        assert.strictEqual(created.importance, "time_sensitive");
+        const { tasks } = yield* mcp.listScheduledTasks(client, {});
+        assert.strictEqual(tasks[0]?.importance, "time_sensitive");
       }),
     );
 

@@ -172,6 +172,16 @@ describe("editing scheduled task branch settings", () => {
   });
 });
 
+describe("missed-run classification", () => {
+  it("reads the stored classification and defaults to routine", () => {
+    expect(taskToDraft(legacyTask).importance).toBe("routine");
+    expect(taskToDraft({ ...legacyTask, importance: "important" }).importance).toBe("important");
+    expect(taskToDraft({ ...legacyTask, importance: "time_sensitive" }).importance).toBe(
+      "time_sensitive",
+    );
+  });
+});
+
 describe("scheduled task destination", () => {
   it("unbinding leaves the shared checkout for a new worktree from the remote", () => {
     const rootBound = taskToDraft({
