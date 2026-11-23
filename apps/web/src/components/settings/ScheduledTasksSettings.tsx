@@ -1381,6 +1381,9 @@ function ScheduledTaskEditorForm({
     task?.schedule.type === "once";
   const offersThreadModes =
     environment?.serverConfig?.environment.capabilities.scheduledTaskThreadModes === true;
+  // Older servers drop the classification, so offer it only where it is honored.
+  const offersImportance =
+    environment?.serverConfig?.environment.capabilities.scheduledTaskImportance === true;
   const connected =
     environment?.connection.phase === "connected" && environment.serverConfig !== null;
   const tasksQuery = useEnvironmentQuery(
@@ -1546,7 +1549,9 @@ function ScheduledTaskEditorForm({
       threadId: draft.threadId ? (draft.threadId as ThreadId) : null,
       ...(offersThreadModes ? { threadMode: draft.threadMode } : {}),
       // Only a fixed-time slot can be missed; other schedules keep whatever is stored.
-      ...(schedule.type === "fixed_time" ? { importance: draft.importance } : {}),
+      ...(offersImportance && schedule.type === "fixed_time"
+        ? { importance: draft.importance }
+        : {}),
       workspaceStrategy,
       modelSelection,
       // Tasks have no mode picker; a mode above the administrator's ceiling would fail every run.
@@ -2104,41 +2109,43 @@ function ScheduledTaskEditorForm({
                     ))}
                   </ToggleGroup>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <Field
-                    label="Classification"
-                    hint="missed runs"
-                    htmlFor="scheduled-task-importance"
-                  >
-                    <Select
-                      value={draft.importance}
-                      onValueChange={(value) =>
-                        setDraft((current) => ({
-                          ...current,
-                          importance: value as ScheduledTaskImportance,
-                        }))
-                      }
+                {offersImportance ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Field
+                      label="Classification"
+                      hint="missed runs"
+                      htmlFor="scheduled-task-importance"
                     >
-                      <SelectTrigger size="sm" id="scheduled-task-importance">
-                        <SelectValue>{IMPORTANCE_LABELS[draft.importance]}</SelectValue>
-                      </SelectTrigger>
-                      <SelectPopup>
-                        {(Object.keys(IMPORTANCE_LABELS) as ScheduledTaskImportance[]).map(
-                          (importance) => (
-                            <SelectItem key={importance} value={importance}>
-                              {IMPORTANCE_LABELS[importance]}
-                            </SelectItem>
-                          ),
-                        )}
-                      </SelectPopup>
-                    </Select>
-                  </Field>
-                  <p className="max-w-md text-xs text-muted-foreground">
-                    Important and time-sensitive runs start when the environment comes back, however
-                    late the slot passed while it was closed. Routine skips a slot missed by more
-                    than 10 minutes.
-                  </p>
-                </div>
+                      <Select
+                        value={draft.importance}
+                        onValueChange={(value) =>
+                          setDraft((current) => ({
+                            ...current,
+                            importance: value as ScheduledTaskImportance,
+                          }))
+                        }
+                      >
+                        <SelectTrigger size="sm" id="scheduled-task-importance">
+                          <SelectValue>{IMPORTANCE_LABELS[draft.importance]}</SelectValue>
+                        </SelectTrigger>
+                        <SelectPopup>
+                          {(Object.keys(IMPORTANCE_LABELS) as ScheduledTaskImportance[]).map(
+                            (importance) => (
+                              <SelectItem key={importance} value={importance}>
+                                {IMPORTANCE_LABELS[importance]}
+                              </SelectItem>
+                            ),
+                          )}
+                        </SelectPopup>
+                      </Select>
+                    </Field>
+                    <p className="max-w-md text-xs text-muted-foreground">
+                      Important and time-sensitive runs start when the environment comes back,
+                      however late the slot passed while it was closed. Routine skips a slot missed
+                      by more than 10 minutes.
+                    </p>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="flex items-center gap-2">

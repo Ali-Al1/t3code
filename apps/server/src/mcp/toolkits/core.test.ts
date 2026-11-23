@@ -709,6 +709,13 @@ it.effect("a caller cannot rewrite a scheduled task that runs above its own mode
       enabled: false,
     });
     expect(allowed.isError).toBe(false);
+    // The update handler forwards the classification instead of dropping it.
+    const classified = yield* call("schedule_task", {
+      scheduledTaskId: "task-auto",
+      importance: "important",
+    });
+    expect(classified.isError).toBe(false);
+    expect(classified.structuredContent).toMatchObject({ importance: "important" });
     const incomplete = yield* call("schedule_task", { prompt: "Run nightly" });
     expect(declaredFailure(incomplete)).toMatchObject({ code: "invalid_request" });
   }).pipe(

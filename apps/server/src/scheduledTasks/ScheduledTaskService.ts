@@ -1427,7 +1427,8 @@ export const layer = Layer.effect(
         prompt: input.prompt,
         enabled: input.enabled,
         schedule,
-        ...(importance === undefined ? {} : { importance }),
+        // Routine is stored as NULL, so a save returns what later reads report.
+        ...(importance === undefined || importance === "routine" ? {} : { importance }),
         projectId: input.projectId,
         threadId,
         threadMode,
