@@ -1338,12 +1338,11 @@ export const layer = Layer.effect(
           ? managedRuntimeModeDenial(managedPolicy.summary, input.runtimeMode)
           : undefined;
       if (modeDenial !== undefined) return yield* taskError(modeDenial, { taskId: id });
+      // Omitted keeps the stored classification, as webhook filters do; a new task starts routine.
+      const importance = input.importance ?? existingTask?.importance;
       // Keep the existing next_run_at when the schedule itself is untouched:
       // editing a title or prompt must not postpone (or resurrect) a due
       // run — only schedule/enabled changes restart the clock.
-
-      // Omitted keeps the stored classification, as webhook filters do; a new task starts routine.
-      const importance = input.importance ?? existingTask?.importance;
       const schedule: ScheduledTask["schedule"] =
         input.schedule.type === "webhook"
           ? {
