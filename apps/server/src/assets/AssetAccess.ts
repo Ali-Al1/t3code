@@ -35,7 +35,7 @@ import {
   isProjectFaviconPath,
   PROJECT_FAVICON_FALLBACK_MARKER,
 } from "@t3tools/shared/projectFavicon";
-import { isNetworkPath } from "@t3tools/shared/path";
+import { expandMsysDrivePath, isNetworkPath } from "@t3tools/shared/path";
 import { MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH, toolOutputImages } from "@t3tools/shared/toolOutput";
 import * as Clock from "effect/Clock";
 import * as Digest from "effect/crypto/Digest";
@@ -548,7 +548,12 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
 
   switch (input.resource._tag) {
     case "media-file": {
-      let requestedPath = expandHomePath(input.resource.path, yield* HostProcess.HomeDirectory);
+      // An agent in Git Bash spells a drive `/c/...`; Windows `realpath` reads that as
+      // `\c\...` and misses the file, so the host's spelling wins at this boundary.
+      let requestedPath = expandMsysDrivePath(
+        expandHomePath(input.resource.path, yield* HostProcess.HomeDirectory),
+        (yield* HostProcess.Platform) === "win32",
+      );
       if (!path.isAbsolute(requestedPath)) {
         if (!input.workspaceRoot) {
           return yield* new AssetWorkspaceContextNotFoundError({ resource: input.resource });
@@ -603,9 +608,12 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
     }
     case "draft-workspace-file": {
       const draftWorkspaceRoot = input.workspaceRoot ?? input.resource.cwd;
-      const hostPath = input.resource.path.startsWith("~/")
-        ? expandHomePath(input.resource.path, yield* HostProcess.HomeDirectory)
-        : input.resource.path;
+      const hostPath = expandMsysDrivePath(
+        input.resource.path.startsWith("~/")
+          ? expandHomePath(input.resource.path, yield* HostProcess.HomeDirectory)
+          : input.resource.path,
+        (yield* HostProcess.Platform) === "win32",
+      );
       if (path.isAbsolute(hostPath)) {
         const finalized = yield* finalizeAbsoluteMediaFileAsset({
           requestedPath: hostPath,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  expandMsysDrivePath,
   workspaceRelativeFilePath,
   newProjectFolderName,
   normalizeProjectPathForComparison,
@@ -123,5 +124,21 @@ describe("workspaceRelativeFilePath", () => {
     ["\\\\server\\share\\repo\\..\\notes.md", "\\\\server\\share\\repo", null],
   ])("relates %s to %s", (path, workspaceRoot, relativePath) => {
     expect(workspaceRelativeFilePath(path, workspaceRoot)).toBe(relativePath);
+  });
+});
+
+describe("expandMsysDrivePath", () => {
+  it("rewrites a Git Bash drive spelling only for a Windows host", () => {
+    expect(expandMsysDrivePath("/c/Users/me/report.pdf", true)).toBe("C:/Users/me/report.pdf");
+    expect(expandMsysDrivePath("/c/", true)).toBe("C:/");
+    // `/c` alone never carries enough shape to be a drive, and drive-shaped spellings of
+    // other hosts' paths must survive untouched.
+    expect(expandMsysDrivePath("/c", true)).toBe("/c");
+    expect(expandMsysDrivePath("/c/Users/me/report.pdf", false)).toBe("/c/Users/me/report.pdf");
+    expect(expandMsysDrivePath("/home/me/report.pdf", true)).toBe("/home/me/report.pdf");
+    expect(expandMsysDrivePath("C:/Users/me/report.pdf", true)).toBe("C:/Users/me/report.pdf");
+    expect(expandMsysDrivePath("//server/share/report.pdf", true)).toBe(
+      "//server/share/report.pdf",
+    );
   });
 });

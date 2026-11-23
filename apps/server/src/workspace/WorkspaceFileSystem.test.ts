@@ -91,6 +91,13 @@ const writeTextFile = Effect.fn("writeTextFile")(function* (
   yield* fileSystem.writeFileString(absolutePath, contents).pipe(Effect.orDie);
 });
 
+// An agent in Git Bash spells `C:\x` as `/c/x`; only a Windows host can resolve that spelling.
+const toMsysDrivePath = (windowsPath: string) =>
+  windowsPath
+    .replace(/^([A-Za-z]):[\\/]/, (_, drive: string) => `/${drive.toLowerCase()}/`)
+    .replaceAll("\\", "/");
+const isWindowsHost = HostProcess.Platform.defaultValue() === "win32";
+
 it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (it) => {
   describe("getMetadata", () => {
     it.effect(
@@ -124,6 +131,19 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
             null,
           ]);
         }),
+    );
+
+    it.effect.skipIf(!isWindowsHost)("reports a file named by its Git Bash drive spelling", () =>
+      Effect.gen(function* () {
+        const service = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "letter.md", "hello");
+        const result = yield* service.getMetadata({
+          paths: [toMsysDrivePath(path.join(cwd, "letter.md"))],
+        });
+        expect(result.entries).toEqual([{ kind: "file", byteLength: 5 }]);
+      }),
     );
 
     it.effect("detects an extensionless script and image without returning their contents", () =>
@@ -250,6 +270,21 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           byteLength: 9,
           truncated: false,
         });
+      }),
+    );
+
+    it.effect.skipIf(!isWindowsHost)("reads a host file by its Git Bash drive spelling", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        const outsideDir = yield* makeTempDir;
+        yield* writeTextFile(outsideDir, "letter.md", "# Letter\n");
+        const msysPath = toMsysDrivePath(path.join(outsideDir, "letter.md"));
+
+        const result = yield* workspaceFileSystem.readFile({ cwd, relativePath: msysPath });
+
+        expect(result).toMatchObject({ relativePath: msysPath, contents: "# Letter\n" });
       }),
     );
 

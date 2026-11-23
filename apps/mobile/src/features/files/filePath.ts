@@ -5,6 +5,7 @@ import {
   isWorkspaceAudioPreviewPath,
   isWorkspaceVideoPreviewPath,
 } from "@t3tools/shared/filePreview";
+import { expandMsysDrivePath, stripSlashPrefixedWindowsDrive } from "@t3tools/shared/path";
 
 function isWindowsAbsolutePath(value: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
@@ -64,7 +65,15 @@ export function resolveFileLinkPath(
     const expanded = resolvePathLinkTarget(targetPath, workspaceRoot);
     return isAbsolutePath(expanded) ? expanded : null;
   }
-  return isAbsolutePath(targetPath) ? targetPath : normalizeRelativePath(targetPath);
+  if (!isAbsolutePath(targetPath)) return normalizeRelativePath(targetPath);
+  // An agent in Git Bash spells a drive `/c/...`; a Windows project root is what says such a
+  // link names `C:/...` rather than a directory named `c`.
+  return expandMsysDrivePath(
+    targetPath,
+    workspaceRoot !== null &&
+      workspaceRoot !== undefined &&
+      isWindowsAbsolutePath(stripSlashPrefixedWindowsDrive(workspaceRoot)),
+  );
 }
 
 export function resolveWorkspaceRelativeFilePath(

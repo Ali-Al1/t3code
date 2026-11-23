@@ -529,6 +529,8 @@ function GuestThread({
             markdownCwd={undefined}
             resolvedTheme={resolvedTheme}
             timestampFormat="locale"
+            // No root, so image sources reach the server as the reply spelled them, which is
+            // what guest media authorizes against (a Windows root would rewrite `/c/...`).
             workspaceRoot={undefined}
             anchorMessageId={null}
             onAnchorReady={ignore}

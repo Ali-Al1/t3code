@@ -611,6 +611,35 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
+  // An agent in Git Bash spells the drive `/c/...`; the Windows host must look up the file
+  // that spelling names, never the `c` directory Windows would otherwise read on its drive.
+  // Only a Windows host resolves `C:/...` as a drive path; elsewhere it would join the root.
+  it.effect.skipIf(HostProcess.Platform.defaultValue() !== "win32")(
+    "serves a media file named by its Git Bash drive spelling",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-media-msys-root-" });
+        const outside = yield* fs.makeTempDirectoryScoped({ prefix: "t3-media-msys-" });
+        const filePath = path.join(outside, "report.pdf");
+        yield* fs.writeFileString(filePath, "media");
+        const canonicalFile = yield* fs.realPath(filePath);
+        const msysPath = filePath
+          .replace(/^([A-Za-z]):[\\/]/, (_, drive: string) => `/${drive.toLowerCase()}/`)
+          .replaceAll("\\", "/");
+        const result = yield* issueAssetUrl({
+          resource: { _tag: "media-file", threadId: ThreadId.make("thread-1"), path: msysPath },
+          workspaceRoot: root,
+        });
+        const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+        const separator = suffix.indexOf("/");
+        expect(
+          yield* resolveAsset(suffix.slice(0, separator), suffix.slice(separator + 1)),
+        ).toMatchObject({ kind: "file", path: canonicalFile, mimeType: "application/pdf" });
+      }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect.skipIf(!symlinksSupported)(
     "rejects non-previewable files, disguised targets, and directories",
     () =>

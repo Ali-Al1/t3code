@@ -1,6 +1,8 @@
 import {
+  expandMsysDrivePath,
   isNetworkPath,
   isWindowsAbsolutePath,
+  stripSlashPrefixedWindowsDrive,
   workspaceRelativeFilePath,
 } from "@t3tools/shared/path";
 
@@ -27,6 +29,14 @@ function joinWorkspacePath(workspaceRoot: string, relativePath: string): string 
   const root = workspaceRoot.replace(/[\\/]+$/, "");
   const path = relativePath.replace(/[\\/]/g, separator).replace(/^[\\/]+/, "");
   return `${root}${separator}${path}`;
+}
+
+function isWindowsWorkspaceRoot(workspaceRoot: string | null | undefined): boolean {
+  return (
+    workspaceRoot !== null &&
+    workspaceRoot !== undefined &&
+    isWindowsAbsolutePath(stripSlashPrefixedWindowsDrive(workspaceRoot))
+  );
 }
 
 /** Rendering is not a click, so a network path loads only from the project's own share. */
@@ -57,8 +67,11 @@ export function classifyMarkdownImageSource(
     return { _tag: "Direct", uri: source };
   }
 
-  const path = markdownDestinationHostPath(source);
-  if (path === null) return { _tag: "Blocked" };
+  const authoredPath = markdownDestinationHostPath(source);
+  if (authoredPath === null) return { _tag: "Blocked" };
+  // An image authored in Git Bash spells its drive `/c/...`; a Windows project root is
+  // what says that names `C:/...` instead of the `\c\...` directory Windows would read.
+  const path = expandMsysDrivePath(authoredPath, isWindowsWorkspaceRoot(workspaceRoot));
   if (/^file:/i.test(source)) return hostFileSource(path, workspaceRoot);
   if (path.length === 0) return { _tag: "Blocked" };
   if (path.startsWith("/") || isWindowsAbsolutePath(path)) {

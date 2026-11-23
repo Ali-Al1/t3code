@@ -83,6 +83,22 @@ export function stripSlashPrefixedWindowsDrive(path: string): string {
   return SLASH_PREFIXED_WINDOWS_DRIVE_PATTERN.test(path) ? path.slice(1) : path;
 }
 
+// Git Bash (MSYS) mounts a drive as `/c`, but Windows reads `/c/foo` as `\c\foo` on the
+// current drive, so the same spelling names two different files.
+const MSYS_DRIVE_PATH_PATTERN = /^\/([A-Za-z])(?=\/)/;
+
+/**
+ * Rewrites an agent's Git Bash spelling of a drive (`/c/Users/x`) as the Windows path it
+ * names (`C:/Users/x`). Only callers that know the target host runs Windows may pass true:
+ * anywhere else `/c/...` is an ordinary path to a directory named `c`.
+ */
+export function expandMsysDrivePath(path: string, isWindowsHost: boolean): string {
+  if (!isWindowsHost) return path;
+  const match = MSYS_DRIVE_PATH_PATTERN.exec(path);
+  if (!match?.[1]) return path;
+  return `${match[1].toUpperCase()}:${path.slice(match[0].length)}`;
+}
+
 export function fileBasename(path: string): string {
   const trimmed = path.replace(/[/\\]+$/, "");
   if (trimmed.length === 0) return path;

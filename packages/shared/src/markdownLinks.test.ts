@@ -196,3 +196,59 @@ describe("resolveMarkdownFileLinkTarget", () => {
     );
   });
 });
+
+describe("resolveMarkdownFileLinkTarget with Git Bash drives", () => {
+  // An agent in Git Bash spells the drive `/c/...`; only a Windows project root says which
+  // file it names, because Windows would read the authored spelling as a `c` directory.
+  it("reads a Git Bash drive link as the Windows path it names for a Windows project", () => {
+    expect(
+      resolveMarkdownFileLinkTarget(
+        "/c/Users/me/workspace/2026-10-26-accurx-000490272892.pdf",
+        "C:/Users/me/workspace",
+      ),
+    ).toBe("C:/Users/me/workspace/2026-10-26-accurx-000490272892.pdf");
+    expect(
+      resolveMarkdownFileLinkTarget("/c/Users/me/project/src/main.ts:12", "C:/Users/me/project"),
+    ).toBe("C:/Users/me/project/src/main.ts:12");
+    expect(
+      resolveMarkdownFileLinkTarget(
+        "file:///c/Users/me/workspace/shot.png",
+        "C:/Users/me/workspace",
+      ),
+    ).toBe("C:/Users/me/workspace/shot.png");
+  });
+
+  it("accepts extensionless files and folders in Git Bash spelling for a Windows project", () => {
+    expect(
+      resolveMarkdownFileLinkTarget("/c/Users/me/project/scripts/deploy", "C:\\Users\\me\\project"),
+    ).toBe("C:/Users/me/project/scripts/deploy");
+    expect(resolveMarkdownFileLinkTarget("/c/Users/me/project/src/", "C:/Users/me/project")).toBe(
+      "C:/Users/me/project/src/",
+    );
+    // Short regex or route text is not a drive link just because the project is on Windows.
+    for (const text of ["/a/g", "/x/i", "/r/rust", "/u/spez", "/c/Users"]) {
+      expect(resolveMarkdownFileLinkTarget(text, "C:/Users/me/project")).toBeNull();
+    }
+    expect(isMarkdownFileLinkLabel("deploy", "/c/Users/me/project/scripts/deploy")).toBe(true);
+    for (const href of ["/c/Users/me/project/scripts/deploy", "/c/Users/me/project/src/"]) {
+      expect(isMarkdownFileLinkLabel(href, href)).toBe(true);
+    }
+    expect(
+      isMarkdownFileLinkLabel(
+        "C:\\Users\\me\\project\\src\\main.ts",
+        "/c/Users/me/project/src/main.ts",
+      ),
+    ).toBe(true);
+    // Elsewhere an extensionless `/c/...` path keeps the usual POSIX rules.
+    expect(resolveMarkdownFileLinkTarget("/c/Users/me/project/scripts/deploy", "/home/me")).toBe(
+      null,
+    );
+  });
+
+  it("keeps a drive-shaped link a plain POSIX path without a Windows project root", () => {
+    expect(resolveMarkdownFileLinkTarget("/c/Users/me/report.pdf", "/home/me/project")).toBe(
+      "/c/Users/me/report.pdf",
+    );
+    expect(resolveMarkdownFileLinkTarget("/c/Users/me/report.pdf")).toBe("/c/Users/me/report.pdf");
+  });
+});

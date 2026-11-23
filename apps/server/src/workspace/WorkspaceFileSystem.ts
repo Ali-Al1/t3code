@@ -13,7 +13,7 @@ import type {
 } from "@t3tools/contracts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { isNetworkPath } from "@t3tools/shared/path";
+import { expandMsysDrivePath, isNetworkPath } from "@t3tools/shared/path";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -143,7 +143,11 @@ export const make = Effect.gen(function* () {
   const isServerInternalPath = yield* makeIsServerInternalPath;
 
   const metadataForPath = Effect.fnUntraced(function* (requestedPath: string) {
-    const expandedPath = expandHomePath(requestedPath, yield* HostProcess.HomeDirectory);
+    // An agent in Git Bash spells a drive `/c/...`; Windows would read that as `\c\...`.
+    const expandedPath = expandMsysDrivePath(
+      expandHomePath(requestedPath, yield* HostProcess.HomeDirectory),
+      yield* HostProcess.isWindows,
+    );
     // Chips ask as soon as an agent's message renders, and touching a network
     // path makes Windows sign in to its host with the user's NTLM credentials.
     if (!path.isAbsolute(expandedPath) || isNetworkPath(expandedPath)) return null;
@@ -227,9 +231,13 @@ export const make = Effect.gen(function* () {
     input: ProjectReadFileInput,
   ) {
     const requestedPath = input.relativePath.trim();
-    const hostPath = requestedPath.startsWith("~/")
-      ? expandHomePath(requestedPath, yield* HostProcess.HomeDirectory)
-      : requestedPath;
+    // An agent in Git Bash spells a drive `/c/...`; Windows would read that as `\c\...`.
+    const hostPath = expandMsysDrivePath(
+      requestedPath.startsWith("~/")
+        ? expandHomePath(requestedPath, yield* HostProcess.HomeDirectory)
+        : requestedPath,
+      yield* HostProcess.isWindows,
+    );
     if (
       isNetworkPath(hostPath) &&
       !KnownWorkspaces.isWithinRoot(path, path.resolve(hostPath), path.resolve(input.cwd))
